@@ -22,6 +22,21 @@ Please cite our paper if the code is useful for your project.
   year = {2022},
 }
 ```
+You may also find our [DACT](https://github.com/yining043/VRP-DACT) useful.
+```
+@inproceedings{ma2021learning,
+ author = {Ma, Yining and Li, Jingwen and Cao, Zhiguang and Song, Wen and Zhang, Le and Chen, Zhenghua and Tang, Jing},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {M. Ranzato and A. Beygelzimer and Y. Dauphin and P.S. Liang and J. Wortman Vaughan},
+ pages = {11096--11107},
+ publisher = {Curran Associates, Inc.},
+ title = {Learning to Iteratively Solve Routing Problems with Dual-Aspect Collaborative Transformer},
+ url = {https://proceedings.neurips.cc/paper/2021/file/5c53292c032b6cb8510041c54274e65f-Paper.pdf},
+ volume = {34},
+ year = {2021}
+}
+
+```
 
 
 # Dependencies

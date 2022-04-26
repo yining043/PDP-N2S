@@ -19,7 +19,7 @@ Please cite our paper if the code is useful for your project.
 @inproceedings{ma2022efficient,
   title = {Efficient Neural Neighborhood Search for Pickup and Delivery Problems},
   author = {Ma, Yining and Li, Jingwen and Cao, Zhiguang and Song, Wen and Guo, Hongliang and Gong, Yuejiao and Chee, Yeow Meng},
-  booktitle = {Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence, {IJCAI-22}},
+  booktitle = {Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI)},
   publisher = {International Joint Conferences on Artificial Intelligence Organization},
   year = {2022},
 }

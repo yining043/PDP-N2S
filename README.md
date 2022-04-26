@@ -99,7 +99,7 @@ You can initialize a run using a pretrained model by adding the --load_path opti
 ```python
 --load_path '{add model to load here}'
 ```
-### Resume Traning
+### Resume Training
 You can resume a training by adding the --resume option:
 ```python
 --resume '{add last saved checkpoint(model) to resume here}'

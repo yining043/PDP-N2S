@@ -41,7 +41,7 @@ You may also find our [DACT](https://github.com/yining043/VRP-DACT) useful.
 ```
 
 # Jupyter Notebook
-Note that following the data structure of our [DACT](https://github.com/yining043/VRP-DACT), we use linked list to store solutions. We thus highly recommend you to read our Jupyter notebook for DACT to help you get started and understand our code for DACT and N2S. Please open the [Jupyter notebook](https://github.com/yining043/VRP-DACT/blob/main/Play_with_DACT.ipynb) here :)
+Note that following the data structure of our [DACT](https://github.com/yining043/VRP-DACT), we use linked list to store solutions. We thus highly recommend you to read our Jupyter notebook for DACT before getting into details of our code for N2S. Please open the [Jupyter notebook](https://github.com/yining043/VRP-DACT/blob/main/Play_with_DACT.ipynb) here :)
 
 
 # Dependencies

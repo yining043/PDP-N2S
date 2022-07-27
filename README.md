@@ -17,12 +17,20 @@ Yining Ma, Jingwen Li, Zhiguang Cao, Wen Song, Hongliang Guo, Yuejiao Gong and Y
 Please cite our paper if the code is useful for your project.
 ```
 @inproceedings{ma2022efficient,
-  title = {Efficient Neural Neighborhood Search for Pickup and Delivery Problems},
-  author = {Ma, Yining and Li, Jingwen and Cao, Zhiguang and Song, Wen and Guo, Hongliang and Gong, Yuejiao and Chee, Yeow Meng},
-  booktitle = {Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI)},
+  title     = {Efficient Neural Neighborhood Search for Pickup and Delivery Problems},
+  author    = {Ma, Yining and Li, Jingwen and Cao, Zhiguang and Song, Wen and Guo, Hongliang and Gong, Yuejiao and Chee, Yeow Meng},
+  booktitle = {Proceedings of the Thirty-First International Joint Conference on
+               Artificial Intelligence, {IJCAI-22}},
   publisher = {International Joint Conferences on Artificial Intelligence Organization},
-  year = {2022},
+  editor    = {Lud De Raedt},
+  pages     = {4776--4784},
+  year      = {2022},
+  month     = {7},
+  note      = {Main Track}
+  doi       = {10.24963/ijcai.2022/662},
+  url       = {https://doi.org/10.24963/ijcai.2022/662},
 }
+
 ```
 You may also find our [DACT](https://github.com/yining043/VRP-DACT) useful.
 ```

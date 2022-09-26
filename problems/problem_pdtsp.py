@@ -1,8 +1,8 @@
+from typing import Dict, Iterable, List, Optional, Tuple
 from torch.utils.data import Dataset
 import torch
 import pickle
 import os
-from typing import Dict, Iterable, List, Optional, Tuple
 
 from .problem_pdp import PDPDatasetMeta, PDP
 

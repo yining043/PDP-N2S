@@ -1,8 +1,8 @@
+from typing import Optional, List
 import os
 import time
 import argparse
 import torch
-from typing import Optional, List
 
 
 class Option(argparse.Namespace):

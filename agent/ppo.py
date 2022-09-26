@@ -1,3 +1,4 @@
+from typing import List
 import os
 from tqdm import tqdm
 import warnings
@@ -14,19 +15,21 @@ from nets.actor_network import Actor
 from nets.critic_network import Critic
 from utils import torch_load_cpu, get_inner_model, move_to, move_to_cuda
 from utils.logger import log_to_tb_train
-from agent.utils import validate
+from options import Option
+
+from .utils import validate
 
 
 class Memory:
-    def __init__(self):
+    def __init__(self) -> None:
         self.actions = []
         self.states = []
         self.logprobs = []
         self.rewards = []
         self.obj = []
-        self.action_record = []
+        self.action_record: List[torch.Tensor] = []
 
-    def clear_memory(self):
+    def clear_memory(self) -> None:
         del self.actions[:]
         del self.states[:]
         del self.logprobs[:]
@@ -36,7 +39,7 @@ class Memory:
 
 
 class PPO:
-    def __init__(self, problem_name, size, opts):
+    def __init__(self, problem_name: str, size: int, opts: Option) -> None:
 
         # figure out the options
         self.opts = opts

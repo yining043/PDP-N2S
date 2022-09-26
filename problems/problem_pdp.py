@@ -1,7 +1,7 @@
+from typing import Dict, Iterable, List, Optional, Tuple
 from abc import ABCMeta
 import torch
 from torch.utils.data import Dataset
-from typing import Dict, Iterable, List, Optional, Tuple
 
 
 class PDP(metaclass=ABCMeta):

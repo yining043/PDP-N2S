@@ -1,5 +1,9 @@
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from torch import nn
 import torch
+
+from problems.problem_pdp import PDP
+
 from .graph_layers import (
     MultiHeadEncoder,
     MultiHeadDecoder,
@@ -9,16 +13,21 @@ from .graph_layers import (
 
 
 class mySequential(nn.Sequential):
-    def forward(self, *inputs):
+
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(
+        self, *inputs: Union[Tuple[torch.Tensor], torch.Tensor]
+    ) -> torch.Tensor:
         for module in self._modules.values():
             if type(inputs) == tuple:
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
-        return inputs
+        return inputs  # type: ignore
 
 
-def get_action_sig(action_record):
+def get_action_sig(action_record: List[torch.Tensor]) -> torch.Tensor:
     action_record_tensor = torch.stack(action_record)
     return torch.cat(
         (
@@ -32,15 +41,15 @@ def get_action_sig(action_record):
 class Actor(nn.Module):
     def __init__(
         self,
-        problem_name,
-        embedding_dim,
-        hidden_dim,
-        n_heads_actor,
-        n_layers,
-        normalization,
-        v_range,
-        seq_length,
-    ):
+        problem_name: str,
+        embedding_dim: int,
+        hidden_dim: int,
+        n_heads_actor: int,
+        n_layers: int,
+        normalization: str,
+        v_range: int,
+        seq_length: int,
+    ) -> None:
         super(Actor, self).__init__()
 
         self.embedding_dim = embedding_dim
@@ -82,24 +91,47 @@ class Actor(nn.Module):
 
         print(self.get_parameter_number())
 
-    def get_parameter_number(self):
+    def get_parameter_number(self) -> Dict[str, int]:
         total_num = sum(p.numel() for p in self.parameters())
         trainable_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
         return {'Total': total_num, 'Trainable': trainable_num}
 
+    __call__: Callable[
+        ...,
+        Union[
+            torch.Tensor,
+            Tuple[
+                torch.Tensor,
+                torch.Tensor,
+                Optional[torch.Tensor],
+                Optional[torch.Tensor],
+            ],
+            Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]],
+        ],
+    ]
+
     def forward(
         self,
-        problem,
-        x_in,
-        solution,
-        exchange,
-        action_record,
-        do_sample=False,
-        fixed_action=None,
-        require_entropy=False,
-        to_critic=False,
-        only_critic=False,
-    ):
+        problem: PDP,
+        x_in: torch.Tensor,
+        solution: torch.Tensor,
+        exchange: torch.Tensor,
+        action_record: List[torch.Tensor],
+        do_sample: bool = False,
+        fixed_action: bool = None,
+        require_entropy: bool = False,
+        to_critic: bool = False,
+        only_critic: bool = False,
+    ) -> Union[
+        torch.Tensor,
+        Tuple[
+            torch.Tensor,
+            torch.Tensor,
+            Optional[torch.Tensor],
+            Optional[torch.Tensor],
+        ],
+        Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]],
+    ]:
 
         # the embedded input x
         bs, gs, in_d = x_in.size()

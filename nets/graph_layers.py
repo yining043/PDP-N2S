@@ -1,10 +1,10 @@
+from typing import Callable, Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch.distributions import Categorical
 import numpy as np
 from torch import nn
 import math
-from typing import Callable, Optional, Tuple
 
 from problems.problem_pdp import PDP
 

@@ -1,17 +1,20 @@
+from typing import Callable, Tuple
 from torch import nn
+import torch
+
 from .graph_layers import MultiHeadAttentionLayerforCritic, ValueDecoder
 
 
 class Critic(nn.Module):
     def __init__(
         self,
-        problem_name,
-        embedding_dim,
-        hidden_dim,
-        n_heads,
-        n_layers,
-        normalization,
-    ):
+        problem_name: str,
+        embedding_dim: int,
+        hidden_dim: int,
+        n_heads: int,
+        n_layers: int,
+        normalization: str,
+    ) -> None:
 
         super(Critic, self).__init__()
         self.embedding_dim = embedding_dim
@@ -37,7 +40,11 @@ class Critic(nn.Module):
             embed_dim=self.embedding_dim,
         )
 
-    def forward(self, input, cost):
+    __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
+
+    def forward(
+        self, input: torch.Tensor, cost: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         h_features = input.detach()
         h_em = self.encoder(h_features)

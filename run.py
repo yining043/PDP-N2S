@@ -1,3 +1,4 @@
+from typing import Type, Dict
 import os
 import json
 import torch
@@ -5,7 +6,6 @@ import pprint
 import numpy as np
 from tensorboard_logger import Logger as TbLogger
 import warnings
-from typing import Type, Union, Dict
 
 from options import get_options, Option
 from problems.problem_pdp import PDP

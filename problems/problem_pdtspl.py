@@ -1,14 +1,19 @@
+from typing import Dict, Iterable, List, Optional, Tuple
 from torch.utils.data import Dataset
 import torch
 import pickle
 import os
 
+from .problem_pdp import PDPDatasetMeta, PDP
 
-class PDTSPL(object):
+
+class PDTSPL(PDP):
 
     NAME = 'pdtspl'  # Pickup and Delivery TSP with LIFO constriant
 
-    def __init__(self, p_size, init_val_met='p2d', with_assert=False):
+    def __init__(
+        self, p_size: int, init_val_met: str = 'p2d', with_assert: bool = False
+    ) -> None:
 
         self.size = p_size  # the number of nodes in pdp
         self.do_assert = with_assert
@@ -20,17 +25,22 @@ class PDTSPL(object):
             with_assert,
         )
 
-    def input_feature_encoding(self, batch):
+    def input_feature_encoding(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         return batch['coordinates']
 
-    def get_visited_order_map(self, visited_time):
+    def get_visited_order_map(self, visited_time: torch.Tensor) -> torch.Tensor:
 
         bs, gs = visited_time.size()
         visited_time = visited_time % gs
 
         return visited_time.view(bs, gs, 1) > visited_time.view(bs, 1, gs)
 
-    def get_real_mask(self, selected_node, visited_order_map, top2):
+    def get_real_mask(
+        self,
+        selected_node: torch.Tensor,
+        visited_order_map: torch.Tensor,
+        top2: torch.Tensor,
+    ) -> torch.Tensor:
 
         bs, gs, _ = visited_order_map.size()
 
@@ -45,11 +55,13 @@ class PDTSPL(object):
 
         return mask | mask_pd
 
-    def get_initial_solutions(self, batch, val_m=1):
+    def get_initial_solutions(
+        self, batch: Dict[str, torch.Tensor], val_m: int = 1
+    ) -> torch.Tensor:
 
         batch_size = batch['coordinates'].size(0)
 
-        def get_solution(methods):
+        def get_solution(methods: str) -> torch.Tensor:
 
             half_size = self.size // 2
             p_size = self.size
@@ -154,7 +166,14 @@ class PDTSPL(object):
 
         return get_solution(self.init_val_met).expand(batch_size, self.size + 1).clone()
 
-    def step(self, batch, rec, exchange, pre_bsf, action_record):
+    def step(
+        self,
+        batch: Dict[str, torch.Tensor],
+        rec: torch.Tensor,
+        exchange: torch.Tensor,
+        pre_bsf: torch.Tensor,
+        action_record: List,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List]:
 
         bs, gs = rec.size()
         pre_bsf = pre_bsf.view(bs, -1)
@@ -184,7 +203,13 @@ class PDTSPL(object):
             action_record,
         )
 
-    def insert_star(self, solution, pair_index, first, second):
+    def insert_star(
+        self,
+        solution: torch.Tensor,
+        pair_index: torch.Tensor,
+        first: torch.Tensor,
+        second: torch.Tensor,
+    ) -> torch.Tensor:
 
         rec = solution.clone()
         bs, gs = rec.size()
@@ -214,7 +239,7 @@ class PDTSPL(object):
 
         return rec
 
-    def check_feasibility(self, rec):
+    def check_feasibility(self, rec: torch.Tensor) -> None:
 
         p_size = self.size + 1
 
@@ -258,10 +283,17 @@ class PDTSPL(object):
             "deliverying without pick-up",
         )
 
-    def get_swap_mask(self, selected_node, visited_order_map, top2):
+    def get_swap_mask(
+        self,
+        selected_node: torch.Tensor,
+        visited_order_map: torch.Tensor,
+        top2: torch.Tensor,
+    ) -> torch.Tensor:
         return self.get_real_mask(selected_node, visited_order_map, top2)
 
-    def get_costs(self, batch, rec):
+    def get_costs(
+        self, batch: Dict[str, torch.Tensor], rec: torch.Tensor
+    ) -> torch.Tensor:
 
         batch_size, size = rec.size()
 
@@ -279,18 +311,23 @@ class PDTSPL(object):
         return length
 
     @staticmethod
-    def make_dataset(*args, **kwargs):
+    def make_dataset(*args, **kwargs) -> 'PDPDataset':
         return PDPDataset(*args, **kwargs)
 
 
-class PDPDataset(Dataset):
+class PDPDataset(PDPDatasetMeta):
     def __init__(
-        self, filename=None, size=20, num_samples=10000, offset=0, distribution=None
+        self,
+        filename: Optional[str] = None,
+        size: int = 20,
+        num_samples: int = 10000,
+        offset: int = 0,
+        distribution: Optional[bool] = None,
     ):
 
         super(PDPDataset, self).__init__()
 
-        self.data = []
+        self.data: list[dict[str, torch.Tensor]] = []
         self.size = size
 
         if filename is not None:
@@ -323,7 +360,7 @@ class PDPDataset(Dataset):
             del self.data[i]['loc']
         print(f'{self.N} instances initialized.')
 
-    def make_instance(self, args):
+    def make_instance(self, args: Iterable) -> Dict[str, torch.Tensor]:
         depot, loc, *args = args
         grid_size = 1
         if len(args) > 0:
@@ -333,8 +370,8 @@ class PDPDataset(Dataset):
             'depot': torch.tensor(depot, dtype=torch.float) / grid_size,
         }
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.N
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         return self.data[idx]

@@ -2,9 +2,77 @@ import os
 import time
 import argparse
 import torch
+from typing import Optional, List
 
 
-def get_options(args=None):
+class Option(argparse.Namespace):
+    # overall settings
+    problem: str
+    graph_size: int
+    init_val_met: str
+    no_cuda: bool
+    no_tb: bool
+    show_figs: bool
+    no_saving: bool
+    use_assert: bool
+    no_DDP: bool
+    seed: int
+
+    # N2S parameters
+    v_range: float
+    actor_head_num: int
+    critic_head_num: int
+    embedding_dim: int
+    hidden_dim: int
+    n_encode_layers: int
+    normalization: str
+
+    # Training parameters
+    RL_agent: str
+    gamma: float
+    K_epochs: int
+    eps_clip: float
+    T_train: int
+    n_step: int
+    warm_up: float
+    batch_size: int
+    epoch_end: int
+    epoch_size: int
+    lr_model: float
+    lr_critic: float
+    lr_decay: float
+    max_grad_norm: float
+
+    # Inference and validation parameters
+    T_max: int
+    eval_only: bool
+    val_size: int
+    val_batch_size: int
+    val_dataset: str
+    val_m: int
+
+    # resume and load models
+    load_path: Optional[str]
+    resume: Optional[str]
+    epoch_start: int
+
+    # logs/output settings
+    no_progress_bar: bool
+    log_dir: str
+    log_step: int
+    output_dir: str
+    run_name: str
+    checkpoint_epochs: int
+
+    # add later
+    world_size: int
+    distributed: bool
+    use_cuda: bool
+    save_dir: str
+    device: torch.device
+
+
+def get_options(args: Optional[List[str]] = None) -> Option:
     parser = argparse.ArgumentParser(description="Neural Neighborhood Search")
 
     # overall settings
@@ -210,7 +278,8 @@ def get_options(args=None):
         help='save checkpoint every n epochs (default 1), 0 to save no checkpoints',
     )
 
-    opts = parser.parse_args(args)
+    opts = Option()
+    parser.parse_args(args, namespace=opts)
 
     ### figure out whether to use distributed training
     opts.world_size = torch.cuda.device_count()
@@ -231,7 +300,7 @@ def get_options(args=None):
             opts.run_name,
         )
         if not opts.no_saving
-        else None
+        else 'no_saving'
     )
 
     return opts

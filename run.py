@@ -5,14 +5,16 @@ import pprint
 import numpy as np
 from tensorboard_logger import Logger as TbLogger
 import warnings
-from options import get_options
+from typing import Type, Union, Dict
 
+from options import get_options, Option
+from problems.problem_pdp import PDP
 from problems.problem_pdtsp import PDTSP
 from problems.problem_pdtspl import PDTSPL
 from agent.ppo import PPO
 
 
-def load_agent(name):
+def load_agent(name: str) -> Type[PPO]:
     agent = {
         'ppo': PPO,
     }.get(name, None)
@@ -20,16 +22,17 @@ def load_agent(name):
     return agent
 
 
-def load_problem(name):
-    problem = {
+def load_problem(name: str) -> Type[PDP]:
+    d: Dict[str, Type[PDP]] = {
         'pdtsp': PDTSP,
         'pdtspl': PDTSPL,
-    }.get(name, None)
+    }
+    problem = d.get(name, None)
     assert problem is not None, "Currently unsupported problem: {}!".format(name)
     return problem
 
 
-def run(opts):
+def run(opts: Option) -> None:
 
     # Pretty print the run args
     pprint.pprint(vars(opts))

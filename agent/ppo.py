@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Tuple
 import os
 from tqdm import tqdm
 import warnings
@@ -15,19 +15,21 @@ from nets.actor_network import Actor
 from nets.critic_network import Critic
 from utils import torch_load_cpu, get_inner_model, move_to, move_to_cuda
 from utils.logger import log_to_tb_train
+from problems.problem_pdp import PDP
 from options import Option
 
+from .agent import Agent
 from .utils import validate
 
 
 class Memory:
     def __init__(self) -> None:
-        self.actions = []
-        self.states = []
-        self.logprobs = []
-        self.rewards = []
-        self.obj = []
-        self.action_record: List[torch.Tensor] = []
+        self.actions: List[torch.Tensor] = []
+        self.states: List[torch.Tensor] = []
+        self.logprobs: List[torch.Tensor] = []
+        self.rewards: List[torch.Tensor] = []
+        self.obj: List[torch.Tensor] = []
+        self.action_record: List[List[torch.Tensor]] = []
 
     def clear_memory(self) -> None:
         del self.actions[:]
@@ -38,7 +40,7 @@ class Memory:
         del self.action_record[:]
 
 
-class PPO:
+class PPO(Agent):
     def __init__(self, problem_name: str, size: int, opts: Option) -> None:
 
         # figure out the options
@@ -88,11 +90,11 @@ class PPO:
                 self.critic.to(opts.device)
 
             if torch.cuda.device_count() > 1:
-                self.actor = torch.nn.DataParallel(self.actor)
+                self.actor = torch.nn.DataParallel(self.actor)  # type: ignore
                 if not opts.eval_only:
-                    self.critic = torch.nn.DataParallel(self.critic)
+                    self.critic = torch.nn.DataParallel(self.critic)  # type: ignore
 
-    def load(self, load_path):
+    def load(self, load_path: str) -> None:
 
         assert load_path is not None
         load_data = torch_load_cpu(load_path)
@@ -117,7 +119,7 @@ class PPO:
         # done
         print(' [*] Loading data from {}'.format(load_path))
 
-    def save(self, epoch):
+    def save(self, epoch: int) -> None:
         print('Saving model and state...')
         torch.save(
             {
@@ -130,19 +132,26 @@ class PPO:
             os.path.join(self.opts.save_dir, 'epoch-{}.pt'.format(epoch)),
         )
 
-    def eval(self):
+    def eval(self) -> None:
         torch.set_grad_enabled(False)
         self.actor.eval()
         if not self.opts.eval_only:
             self.critic.eval()
 
-    def train(self):
+    def train(self) -> None:
         torch.set_grad_enabled(True)
         self.actor.train()
         if not self.opts.eval_only:
             self.critic.train()
 
-    def rollout(self, problem, val_m, batch, do_sample=False, show_bar=False):
+    def rollout(
+        self,
+        problem: PDP,
+        val_m: int,
+        batch: Dict[str, torch.Tensor],
+        do_sample: bool = False,
+        show_bar: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch = move_to(batch, self.opts.device)  # batch_size, graph_size, 2
         bs, gs, dim = batch['coordinates'].size()
         batch['coordinates'] = batch['coordinates'].unsqueeze(1).repeat(1, val_m, 1, 1)
@@ -229,7 +238,9 @@ class PPO:
 
         return out
 
-    def start_inference(self, problem, val_dataset, tb_logger):
+    def start_inference(
+        self, problem: PDP, val_dataset: str, tb_logger: TbLogger
+    ) -> None:
         if self.opts.distributed:
             mp.spawn(
                 validate,
@@ -239,7 +250,9 @@ class PPO:
         else:
             validate(0, problem, self, val_dataset, tb_logger, distributed=False)
 
-    def start_training(self, problem, val_dataset, tb_logger):
+    def start_training(
+        self, problem: PDP, val_dataset: str, tb_logger: TbLogger
+    ) -> None:
         if self.opts.distributed:
             mp.spawn(
                 train,
@@ -250,7 +263,9 @@ class PPO:
             train(0, problem, self, val_dataset, tb_logger)
 
 
-def train(rank, problem, agent, val_dataset, tb_logger):
+def train(
+    rank: int, problem: PDP, agent: PPO, val_dataset: str, tb_logger: TbLogger
+) -> None:
 
     opts = agent.opts
 
@@ -276,11 +291,11 @@ def train(rank, problem, agent, val_dataset, tb_logger):
         if torch.cuda.device_count() > 1:
             agent.actor = torch.nn.parallel.DistributedDataParallel(
                 agent.actor, device_ids=[rank]
-            )
+            )  # type: ignore
             if not opts.eval_only:
                 agent.critic = torch.nn.parallel.DistributedDataParallel(
                     agent.critic, device_ids=[rank]
-                )
+                )  # type: ignore
         if not opts.no_tb and rank == 0:
             tb_logger = TbLogger(
                 os.path.join(
@@ -322,7 +337,7 @@ def train(rank, problem, agent, val_dataset, tb_logger):
         if opts.distributed:
             train_sampler = torch.utils.data.distributed.DistributedSampler(
                 training_dataset, shuffle=False
-            )
+            )  # type: ignore
             training_dataloader = DataLoader(
                 training_dataset,
                 batch_size=opts.batch_size // opts.world_size,
@@ -391,16 +406,16 @@ def train(rank, problem, agent, val_dataset, tb_logger):
 
 
 def train_batch(
-    rank,
-    problem,
-    agent,
-    epoch,
-    step,
-    batch,
-    tb_logger,
-    opts,
-    pbar,
-):
+    rank: int,
+    problem: PDP,
+    agent: PPO,
+    epoch: int,
+    step: int,
+    batch: Dict[str, torch.Tensor],
+    tb_logger: TbLogger,
+    opts: Option,
+    pbar: tqdm,
+) -> None:
 
     # setup
     agent.train()
@@ -477,12 +492,12 @@ def train_batch(
         memory.actions.append(exchange)
 
         # data array
-        total_cost = 0
+        total_cost = torch.tensor(0)
 
         # for first step
-        entropy = []
-        bl_val_detached = []
-        bl_val = []
+        entropy_list = []
+        bl_val_detached_list = []
+        bl_val_list = []
 
         while t - t_s < n_step and not (t == T):
 
@@ -500,20 +515,20 @@ def train_batch(
                 do_sample=True,
                 require_entropy=True,  # take same action
                 to_critic=True,
-            )
+            )  # type: ignore
 
             memory.actions.append(exchange)
             memory.logprobs.append(log_lh)
             memory.obj.append(obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1))
 
-            entropy.append(entro_p.detach().cpu())
+            entropy_list.append(entro_p.detach().cpu())  # type: ignore
 
             baseline_val_detached, baseline_val = agent.critic(
                 _to_critic, obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1)
             )
 
-            bl_val_detached.append(baseline_val_detached)
-            bl_val.append(baseline_val)
+            bl_val_detached_list.append(baseline_val_detached)
+            bl_val_list.append(baseline_val)
 
             # state transient
             solution, rewards, obj, action_record = problem.step(
@@ -550,14 +565,14 @@ def train_batch(
         for _k in range(K_epochs):
 
             if _k == 0:
-                logprobs = memory.logprobs
+                logprobs_list = memory.logprobs
 
             else:
                 # Evaluating old actions and values :
-                logprobs = []
-                entropy = []
-                bl_val_detached = []
-                bl_val = []
+                logprobs_list = []
+                entropy_list = []
+                bl_val_detached_list = []
+                bl_val_list = []
 
                 for tt in range(t_time):
                     # get new action_prob
@@ -570,25 +585,25 @@ def train_batch(
                         fixed_action=old_actions[tt],
                         require_entropy=True,  # take same action
                         to_critic=True,
-                    )
+                    )  # type: ignore
 
-                    logprobs.append(log_p)
-                    entropy.append(entro_p.detach().cpu())
+                    logprobs_list.append(log_p)
+                    entropy_list.append(entro_p.detach().cpu())  # type: ignore
 
                     baseline_val_detached, baseline_val = agent.critic(
                         _to_critic, old_obj[tt]
                     )
 
-                    bl_val_detached.append(baseline_val_detached)
-                    bl_val.append(baseline_val)
+                    bl_val_detached_list.append(baseline_val_detached)
+                    bl_val_list.append(baseline_val)
 
-            logprobs = torch.stack(logprobs).view(-1)
-            entropy = torch.stack(entropy).view(-1)
-            bl_val_detached = torch.stack(bl_val_detached).view(-1)
-            bl_val = torch.stack(bl_val).view(-1)
+            logprobs = torch.stack(logprobs_list).view(-1)
+            entropy = torch.stack(entropy_list).view(-1)
+            bl_val_detached = torch.stack(bl_val_detached_list).view(-1)
+            bl_val = torch.stack(bl_val_list).view(-1)
 
             # get traget value for critic
-            Reward = []
+            Reward_list = []
             reward_reversed = memory.rewards[::-1]
 
             # estimate return
@@ -605,10 +620,10 @@ def train_batch(
             )[0]
             for r in range(len(reward_reversed)):
                 R = R * gamma + reward_reversed[r]
-                Reward.append(R)
+                Reward_list.append(R)
 
             # clip the target:
-            Reward = torch.stack(Reward[::-1], 0)  # n_step, bs
+            Reward = torch.stack(Reward_list[::-1], 0)  # n_step, bs
             Reward = Reward.view(-1)
 
             # Finding the ratio (pi_theta / pi_theta__old):

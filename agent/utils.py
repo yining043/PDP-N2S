@@ -1,23 +1,34 @@
-# -*- coding: utf-8 -*-
-
+from typing import Optional
 import time
 import torch
 import os
 from tqdm import tqdm
-from utils.logger import log_to_screen, log_to_tb_val
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from tensorboard_logger import Logger as TbLogger
 import numpy as np
 
+from problems.problem_pdp import PDP
+from utils.logger import log_to_screen, log_to_tb_val
 
-def gather_tensor_and_concat(tensor):
+from .agent import Agent
+
+
+def gather_tensor_and_concat(tensor: torch.Tensor) -> torch.Tensor:
     gather_t = [torch.ones_like(tensor) for _ in range(dist.get_world_size())]
     dist.all_gather(gather_t, tensor)
     return torch.cat(gather_t)
 
 
-def validate(rank, problem, agent, val_dataset, tb_logger, distributed=False, _id=None):
+def validate(
+    rank: int,
+    problem: PDP,
+    agent: Agent,
+    val_dataset_str: str,
+    tb_logger: TbLogger,
+    distributed: bool = False,
+    _id: Optional[int] = None,
+) -> None:
 
     # Validate mode
     if rank == 0:
@@ -28,7 +39,7 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed=False, _i
     agent.eval()
 
     val_dataset = problem.make_dataset(
-        size=opts.graph_size, num_samples=opts.val_size, filename=val_dataset
+        size=opts.graph_size, num_samples=opts.val_size, filename=val_dataset_str
     )
 
     if distributed and opts.distributed:
@@ -41,7 +52,7 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed=False, _i
         if torch.cuda.device_count() > 1:
             agent.actor = torch.nn.parallel.DistributedDataParallel(
                 agent.actor, device_ids=[rank]
-            )
+            )  # type: ignore
         if not opts.no_tb and rank == 0:
             tb_logger = TbLogger(
                 os.path.join(
@@ -55,7 +66,7 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed=False, _i
         assert opts.val_batch_size % opts.world_size == 0
         train_sampler = torch.utils.data.distributed.DistributedSampler(
             val_dataset, shuffle=False
-        )
+        )  # type: ignore
         val_dataloader = DataLoader(
             val_dataset,
             batch_size=opts.val_batch_size // opts.world_size,
@@ -74,10 +85,10 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed=False, _i
         )
 
     s_time = time.time()
-    bv = []
-    cost_hist = []
-    best_hist = []
-    r = []
+    bv_list = []
+    cost_hist_list = []
+    best_hist_list = []
+    r_list = []
     for batch in tqdm(
         val_dataloader, desc='inference', bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'
     ):
@@ -86,14 +97,14 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed=False, _i
         bv_, cost_hist_, best_hist_, r_ = agent.rollout(
             problem, opts.val_m, batch, do_sample=True, show_bar=rank == 0
         )
-        bv.append(bv_)
-        cost_hist.append(cost_hist_)
-        best_hist.append(best_hist_)
-        r.append(r_)
-    bv = torch.cat(bv, 0)
-    cost_hist = torch.cat(cost_hist, 0)
-    best_hist = torch.cat(best_hist, 0)
-    r = torch.cat(r, 0)
+        bv_list.append(bv_)
+        cost_hist_list.append(cost_hist_)
+        best_hist_list.append(best_hist_)
+        r_list.append(r_)
+    bv = torch.cat(bv_list, 0)
+    cost_hist = torch.cat(cost_hist_list, 0)
+    best_hist = torch.cat(best_hist_list, 0)
+    r = torch.cat(r_list, 0)
 
     if distributed and opts.distributed:
         dist.barrier()

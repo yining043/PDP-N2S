@@ -599,7 +599,7 @@ class MultiHeadDecoder(nn.Module):
         embed_dim: int,
         val_dim: Optional[int] = None,
         key_dim: Optional[int] = None,
-        v_range: int = 6,
+        v_range: float = 6,
     ) -> None:
         super(MultiHeadDecoder, self).__init__()
         self.n_heads = n_heads = 1

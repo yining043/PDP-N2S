@@ -172,8 +172,8 @@ class PDTSPL(PDP):
         rec: torch.Tensor,
         exchange: torch.Tensor,
         pre_bsf: torch.Tensor,
-        action_record: List,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List]:
+        action_record: List[torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor]]:
 
         bs, gs = rec.size()
         pre_bsf = pre_bsf.view(bs, -1)

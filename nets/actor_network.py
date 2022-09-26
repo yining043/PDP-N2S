@@ -47,7 +47,7 @@ class Actor(nn.Module):
         n_heads_actor: int,
         n_layers: int,
         normalization: str,
-        v_range: int,
+        v_range: float,
         seq_length: int,
     ) -> None:
         super(Actor, self).__init__()

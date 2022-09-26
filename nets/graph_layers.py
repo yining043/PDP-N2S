@@ -4,6 +4,9 @@ from torch.distributions import Categorical
 import numpy as np
 from torch import nn
 import math
+from typing import Callable, Optional, Tuple
+
+from problems.problem_pdp import PDP
 
 TYPE_REMOVAL = 'N2S'
 # TYPE_REMOVAL = 'random'
@@ -15,16 +18,25 @@ TYPE_REINSERTION = 'N2S'
 
 
 class SkipConnection(nn.Module):
-    def __init__(self, module):
+    def __init__(self, module: nn.Module) -> None:
         super(SkipConnection, self).__init__()
         self.module = module
 
-    def forward(self, input):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return input + self.module(input)
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim=None, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        n_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+    ) -> None:
         super(MultiHeadAttention, self).__init__()
 
         if val_dim is None:
@@ -50,13 +62,15 @@ class MultiHeadAttention(nn.Module):
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, q):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, q: torch.Tensor) -> torch.Tensor:
 
         h = q  # compute self-attention
 
@@ -95,7 +109,14 @@ class MultiHeadAttention(nn.Module):
 
 
 class MultiHeadAttentionNew(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim=None, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        n_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+    ) -> None:
         super(MultiHeadAttentionNew, self).__init__()
 
         if val_dim is None:
@@ -122,13 +143,17 @@ class MultiHeadAttentionNew(nn.Module):
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, h, out_source_attn):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(
+        self, h: torch.Tensor, out_source_attn: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # h should be (batch_size, graph_size, input_dim)
         batch_size, graph_size, input_dim = h.size()
@@ -163,7 +188,14 @@ class MultiHeadAttentionNew(nn.Module):
 
 
 class MultiHeadPosCompat(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim=None, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        n_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+    ) -> None:
         super(MultiHeadPosCompat, self).__init__()
 
         if val_dim is None:
@@ -183,13 +215,15 @@ class MultiHeadPosCompat(nn.Module):
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, pos):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, pos: torch.Tensor) -> torch.Tensor:
 
         batch_size, graph_size, input_dim = pos.size()
         posflat = pos.contiguous().view(-1, input_dim)
@@ -206,7 +240,14 @@ class MultiHeadPosCompat(nn.Module):
 
 
 class MultiHeadCompat(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim=None, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        n_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+    ) -> None:
         super(MultiHeadCompat, self).__init__()
 
         if val_dim is None:
@@ -226,13 +267,20 @@ class MultiHeadCompat(nn.Module):
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, q, h=None, mask=None):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(
+        self,
+        q: torch.Tensor,
+        h: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
 
         :param q: queries (batch_size, n_query, input_dim)
@@ -267,7 +315,14 @@ class MultiHeadCompat(nn.Module):
 
 
 class CompatNeighbour(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim=None, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        n_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+    ) -> None:
         super(CompatNeighbour, self).__init__()
 
         n_heads = 4
@@ -291,13 +346,21 @@ class CompatNeighbour(nn.Module):
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, h, rec, visited_order_map, selection_sig):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(
+        self,
+        h: torch.Tensor,
+        rec: torch.Tensor,
+        visited_order_map: torch.Tensor,
+        selection_sig: torch.Tensor,
+    ) -> torch.Tensor:
 
         pre = rec.argsort()
         post = rec.gather(1, rec)
@@ -347,7 +410,14 @@ class CompatNeighbour(nn.Module):
 
 
 class Reinsertion(nn.Module):
-    def __init__(self, n_heads, input_dim, embed_dim=None, val_dim=None, key_dim=None):
+    def __init__(
+        self,
+        n_heads: int,
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+    ) -> None:
         super(Reinsertion, self).__init__()
 
         n_heads = 4
@@ -376,13 +446,22 @@ class Reinsertion(nn.Module):
 
         self.agg = MLP(16, 32, 32, 1, 0)
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, h, pos_pickup, pos_delivery, rec, mask=None):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(
+        self,
+        h: torch.Tensor,
+        pos_pickup: torch.Tensor,
+        pos_delivery: torch.Tensor,
+        rec: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
 
         batch_size, graph_size, input_dim = h.size()
         shp = (batch_size, graph_size, graph_size, self.n_heads)
@@ -433,31 +512,33 @@ class Reinsertion(nn.Module):
         return compatibility
 
 
-class MLP(torch.nn.Module):
+class MLP(nn.Module):
     def __init__(
         self,
-        input_dim=128,
-        feed_forward_dim=64,
-        embedding_dim=64,
-        output_dim=1,
-        p_dropout=0.01,
-    ):
+        input_dim: int = 128,
+        feed_forward_dim: int = 64,
+        embedding_dim: int = 64,
+        output_dim: int = 1,
+        p_dropout: float = 0.01,
+    ) -> None:
         super(MLP, self).__init__()
-        self.fc1 = torch.nn.Linear(input_dim, feed_forward_dim)
-        self.fc2 = torch.nn.Linear(feed_forward_dim, embedding_dim)
-        self.fc3 = torch.nn.Linear(embedding_dim, output_dim)
-        self.dropout = torch.nn.Dropout(p=p_dropout)
+        self.fc1 = nn.Linear(input_dim, feed_forward_dim)
+        self.fc2 = nn.Linear(feed_forward_dim, embedding_dim)
+        self.fc3 = nn.Linear(embedding_dim, output_dim)
+        self.dropout = nn.Dropout(p=p_dropout)
         self.ReLU = nn.ReLU(inplace=True)
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, in_):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, in_: torch.Tensor) -> torch.Tensor:
         result = self.ReLU(self.fc1(in_))
         result = self.dropout(result)
         result = self.ReLU(self.fc2(result))
@@ -468,10 +549,10 @@ class MLP(torch.nn.Module):
 class ValueDecoder(nn.Module):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        input_dim,
-    ):
+        n_heads: int,
+        embed_dim: int,
+        input_dim: int,
+    ) -> None:
         super(ValueDecoder, self).__init__()
         self.input_dim = input_dim
         self.embed_dim = embed_dim
@@ -482,7 +563,9 @@ class ValueDecoder(nn.Module):
 
         self.MLP = MLP(input_dim + 1, embed_dim)
 
-    def forward(self, h_em, cost):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, h_em: torch.Tensor, cost: torch.Tensor) -> torch.Tensor:
 
         # get embed feature
         #        max_pooling = h_em.max(1)[0]   # max Pooling
@@ -512,12 +595,12 @@ class ValueDecoder(nn.Module):
 class MultiHeadDecoder(nn.Module):
     def __init__(
         self,
-        input_dim,
-        embed_dim=None,
-        val_dim=None,
-        key_dim=None,
-        v_range=6,
-    ):
+        input_dim: int,
+        embed_dim: int,
+        val_dim: Optional[int] = None,
+        key_dim: Optional[int] = None,
+        v_range: int = 6,
+    ) -> None:
         super(MultiHeadDecoder, self).__init__()
         self.n_heads = n_heads = 1
         self.embed_dim = embed_dim
@@ -542,19 +625,21 @@ class MultiHeadDecoder(nn.Module):
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
+    __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]
+
     def forward(
         self,
-        problem,
-        h_em,
-        rec,
-        x_in,
-        top2,
-        visited_order_map,
-        pre_action,
-        selection_sig,
-        fixed_action=None,
-        require_entropy=False,
-    ):
+        problem: PDP,
+        h_em: torch.Tensor,
+        rec: torch.Tensor,
+        x_in: torch.Tensor,
+        top2: torch.Tensor,
+        visited_order_map: torch.Tensor,
+        pre_action: torch.Tensor,
+        selection_sig: torch.Tensor,
+        fixed_action: Optional[torch.Tensor] = None,
+        require_entropy: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
 
         bs, gs, dim = h_em.size()
         half_pos = (gs - 1) // 2
@@ -617,7 +702,7 @@ class MultiHeadDecoder(nn.Module):
             else:
                 action_removal = probs_removal.multinomial(1)
         selected_log_ll_action1 = (
-            log_ll_removal.gather(1, action_removal)
+            log_ll_removal.gather(1, action_removal)  # type: ignore
             if self.training and TYPE_REMOVAL == 'N2S'
             else torch.tensor(0).to(h.device)
         )
@@ -724,7 +809,7 @@ class MultiHeadDecoder(nn.Module):
             )  # pair: no_head bs, 2
 
         selected_log_ll_action2 = (
-            log_ll_reinsertion.gather(1, pair_index)
+            log_ll_reinsertion.gather(1, pair_index)  # type: ignore
             if self.training and TYPE_REINSERTION == 'N2S'
             else torch.tensor(0).to(h.device)
         )
@@ -741,7 +826,7 @@ class MultiHeadDecoder(nn.Module):
 
 
 class Normalization(nn.Module):
-    def __init__(self, embed_dim, normalization='batch'):
+    def __init__(self, embed_dim: int, normalization: str = 'batch') -> None:
         super(Normalization, self).__init__()
 
         normalizer_class = {'batch': nn.BatchNorm1d, 'instance': nn.InstanceNorm1d}.get(
@@ -751,18 +836,21 @@ class Normalization(nn.Module):
         self.normalization = normalization
 
         if not self.normalization == 'layer':
+            assert normalizer_class is not None
             self.normalizer = normalizer_class(embed_dim, affine=True)
 
         # Normalization by default initializes affine parameters with bias 0 and weight unif(0,1) which is too large!
         # self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for name, param in self.named_parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def forward(self, input):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         if self.normalization == 'layer':
             return (input - input.mean((1, 2)).view(-1, 1, 1)) / torch.sqrt(
                 input.var((1, 2)).view(-1, 1, 1) + 1e-05
@@ -780,11 +868,11 @@ class Normalization(nn.Module):
 class MultiHeadEncoder(nn.Module):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        feed_forward_hidden,
-        normalization='layer',
-    ):
+        n_heads: int,
+        embed_dim: int,
+        feed_forward_hidden: int,
+        normalization: str = 'layer',
+    ) -> None:
         super(MultiHeadEncoder, self).__init__()
 
         self.MHA_sublayer = MultiHeadAttentionsubLayer(
@@ -801,7 +889,11 @@ class MultiHeadEncoder(nn.Module):
             normalization=normalization,
         )
 
-    def forward(self, input1, input2):
+    __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
+
+    def forward(
+        self, input1: torch.Tensor, input2: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         out1, out2 = self.MHA_sublayer(input1, input2)
         return self.FFandNorm_sublayer(out1), out2
 
@@ -809,11 +901,11 @@ class MultiHeadEncoder(nn.Module):
 class MultiHeadAttentionsubLayer(nn.Module):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        feed_forward_hidden,
-        normalization='layer',
-    ):
+        n_heads: int,
+        embed_dim: int,
+        feed_forward_hidden: int,
+        normalization: str = 'layer',
+    ) -> None:
         super(MultiHeadAttentionsubLayer, self).__init__()
 
         self.MHA = MultiHeadAttentionNew(
@@ -822,7 +914,11 @@ class MultiHeadAttentionsubLayer(nn.Module):
 
         self.Norm = Normalization(embed_dim, normalization)
 
-    def forward(self, input1, input2):
+    __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
+
+    def forward(
+        self, input1: torch.Tensor, input2: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Attention and Residual connection
         out1, out2 = self.MHA(input1, input2)
 
@@ -833,11 +929,11 @@ class MultiHeadAttentionsubLayer(nn.Module):
 class FFandNormsubLayer(nn.Module):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        feed_forward_hidden,
-        normalization='layer',
-    ):
+        n_heads: int,
+        embed_dim: int,
+        feed_forward_hidden: int,
+        normalization: str = 'layer',
+    ) -> None:
         super(FFandNormsubLayer, self).__init__()
 
         self.FF = (
@@ -852,7 +948,9 @@ class FFandNormsubLayer(nn.Module):
 
         self.Norm = Normalization(embed_dim, normalization)
 
-    def forward(self, input):
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
 
         # FF and Residual connection
         out = self.FF(input)
@@ -863,10 +961,10 @@ class FFandNormsubLayer(nn.Module):
 class EmbeddingNet(nn.Module):
     def __init__(
         self,
-        node_dim,
-        embedding_dim,
-        seq_length,
-    ):
+        node_dim: int,
+        embedding_dim: int,
+        seq_length: int,
+    ) -> None:
         super(EmbeddingNet, self).__init__()
         self.node_dim = node_dim
         self.embedding_dim = embedding_dim
@@ -876,21 +974,23 @@ class EmbeddingNet(nn.Module):
 
         self.init_parameters()
 
-    def init_parameters(self):
+    def init_parameters(self) -> None:
 
         for param in self.parameters():
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    def basesin(self, x, omiga, fai=0):
+    def basesin(self, x: np.ndarray, omiga: float, fai: float = 0) -> np.ndarray:
         T = 2 * np.pi / omiga
         return np.sin(omiga * np.abs(np.mod(x, 2 * T) - T) + fai)
 
-    def basecos(self, x, omiga, fai=0):
+    def basecos(self, x: np.ndarray, omiga: float, fai: float = 0) -> np.ndarray:
         T = 2 * np.pi / omiga
         return np.cos(omiga * np.abs(np.mod(x, 2 * T) - T) + fai)
 
-    def cyclic_position_encoding_pattern(self, n_position, emb_dim, mean_pooling=True):
+    def cyclic_position_encoding_pattern(
+        self, n_position: int, emb_dim: int, mean_pooling: bool = True
+    ) -> torch.Tensor:
 
         skip_base = np.power(n_position, 1 / (emb_dim // 2))
         skip_set = np.linspace(skip_base, n_position, emb_dim // 2, dtype='int')
@@ -933,7 +1033,7 @@ class EmbeddingNet(nn.Module):
                     np.linspace(0, num, n_position + 1, dtype='int')
                 ][:n_position]
 
-        pattern = torch.from_numpy(x).type(torch.FloatTensor)
+        pattern = torch.from_numpy(x).type(torch.FloatTensor)  # type: ignore
         pattern_sum = torch.zeros_like(pattern)
 
         # averaging the adjacient embeddings if needed (optional, almost the same performance)
@@ -949,7 +1049,9 @@ class EmbeddingNet(nn.Module):
 
         return pattern
 
-    def position_encoding(self, solutions, embedding_dim, clac_stacks=False):
+    def position_encoding(
+        self, solutions: torch.Tensor, embedding_dim: int, clac_stacks: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         batch_size, seq_length = solutions.size()
         half_size = seq_length // 2
 
@@ -1004,7 +1106,13 @@ class EmbeddingNet(nn.Module):
             top2 if clac_stacks else None,
         )
 
-    def forward(self, x, solutions, clac_stacks=False):
+    __call__: Callable[
+        ..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
+    ]
+
+    def forward(
+        self, x: torch.Tensor, solutions: torch.Tensor, clac_stacks: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         pos_enc, visited_time, top2 = self.position_encoding(
             solutions, self.embedding_dim, clac_stacks
         )
@@ -1015,11 +1123,11 @@ class EmbeddingNet(nn.Module):
 class MultiHeadAttentionLayerforCritic(nn.Sequential):
     def __init__(
         self,
-        n_heads,
-        embed_dim,
-        feed_forward_hidden,
-        normalization='layer',
-    ):
+        n_heads: int,
+        embed_dim: int,
+        feed_forward_hidden: int,
+        normalization: str = 'layer',
+    ) -> None:
         super(MultiHeadAttentionLayerforCritic, self).__init__(
             SkipConnection(
                 MultiHeadAttention(n_heads, input_dim=embed_dim, embed_dim=embed_dim)

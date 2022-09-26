@@ -1,6 +1,6 @@
 from torch import nn
 import torch
-from nets.graph_layers import (
+from .graph_layers import (
     MultiHeadEncoder,
     MultiHeadDecoder,
     EmbeddingNet,

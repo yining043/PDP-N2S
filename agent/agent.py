@@ -13,6 +13,8 @@ class Agent(metaclass=ABCMeta):
     opts: Option
     actor: Actor
     critic: Critic
+    optimizer: torch.optim.Optimizer
+    lr_scheduler: torch.optim.lr_scheduler.ExponentialLR
 
     def __init__(self, problem_name: str, size: int, opts: Option) -> None:
         pass

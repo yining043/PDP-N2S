@@ -1,4 +1,6 @@
+from typing import List, Tuple
 import numpy as np
+import numpy.typing as npt
 import os
 import time
 from datetime import timedelta
@@ -7,7 +9,9 @@ import torch
 import re
 
 
-def _calc_insert_cost(D, prv, nxt, ins):
+def _calc_insert_cost(
+    D: np.ndarray, prv: npt.ArrayLike, nxt: npt.ArrayLike, ins: int
+) -> np.ndarray:
     """
     Calculates insertion costs of inserting ins between prv and nxt
     :param D: distance matrix
@@ -19,7 +23,7 @@ def _calc_insert_cost(D, prv, nxt, ins):
     return D[prv, ins] + D[ins, nxt] - D[prv, nxt]
 
 
-def run_insertion(loc, method):
+def run_insertion(loc: npt.ArrayLike, method: str) -> Tuple[float, List[int]]:
     n = len(loc)
 
     D = distance_matrix(loc, loc)
@@ -64,14 +68,16 @@ def run_insertion(loc, method):
     return cost, tour
 
 
-def solve_insertion(loc, method='random'):
+def solve_insertion(
+    loc: npt.ArrayLike, method='random'
+) -> Tuple[float, List[int], float]:
     start = time.time()
     cost, tour = run_insertion(loc, method)
     duration = time.time() - start
     return cost, tour, duration
 
 
-def insertion(data, met='random'):
+def insertion(data: npt.ArrayLike, met='random') -> torch.Tensor:
 
     lis = []
     for i in range(len(data)):

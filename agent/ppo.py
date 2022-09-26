@@ -264,7 +264,7 @@ class PPO(Agent):
 
 
 def train(
-    rank: int, problem: PDP, agent: PPO, val_dataset: str, tb_logger: TbLogger
+    rank: int, problem: PDP, agent: Agent, val_dataset: str, tb_logger: TbLogger
 ) -> None:
 
     opts = agent.opts
@@ -408,7 +408,7 @@ def train(
 def train_batch(
     rank: int,
     problem: PDP,
-    agent: PPO,
+    agent: Agent,
     epoch: int,
     step: int,
     batch: Dict[str, torch.Tensor],

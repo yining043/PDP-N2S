@@ -1,20 +1,24 @@
+from typing import List, Optional, Tuple
 import torch
 import math
 import numpy as np
+from tensorboard_logger import Logger as TbLogger
+from agent.agent import Agent
+
 from utils.plots import plot_grad_flow, plot_improve_pg
 
 
 def log_to_screen(
-    time_used,
-    init_value,
-    best_value,
-    reward,
-    costs_history,
-    search_history,
-    batch_size,
-    dataset_size,
-    T,
-):
+    time_used: torch.Tensor,
+    init_value: torch.Tensor,
+    best_value: torch.Tensor,
+    reward: torch.Tensor,
+    costs_history: torch.Tensor,
+    search_history: torch.Tensor,
+    batch_size: int,
+    dataset_size: int,
+    T: int,
+) -> None:
     # reward
     print('\n', '-' * 60)
     print(
@@ -71,20 +75,20 @@ def log_to_screen(
 
 
 def log_to_tb_val(
-    tb_logger,
-    time_used,
-    init_value,
-    best_value,
-    reward,
-    costs_history,
-    search_history,
-    batch_size,
-    val_size,
-    dataset_size,
-    T,
-    show_figs,
-    epoch,
-):
+    tb_logger: TbLogger,
+    time_used: torch.Tensor,
+    init_value: torch.Tensor,
+    best_value: torch.Tensor,
+    reward: torch.Tensor,
+    costs_history: torch.Tensor,
+    search_history: torch.Tensor,
+    batch_size: int,
+    val_size: int,
+    dataset_size: int,
+    T: int,
+    show_figs: bool,
+    epoch: Optional[int],
+) -> None:
     if show_figs:
         tb_logger.log_images(
             'validation/improve_pg', [plot_improve_pg(costs_history)], epoch
@@ -106,23 +110,23 @@ def log_to_tb_val(
 
 
 def log_to_tb_train(
-    tb_logger,
-    agent,
-    Reward,
-    ratios,
-    bl_val_detached,
-    total_cost,
-    grad_norms,
-    reward,
-    entropy,
-    approx_kl_divergence,
-    reinforce_loss,
-    baseline_loss,
-    log_likelihood,
-    initial_cost,
-    show_figs,
-    mini_step,
-):
+    tb_logger: TbLogger,
+    agent: Agent,
+    Reward: torch.Tensor,
+    ratios: torch.Tensor,
+    bl_val_detached: torch.Tensor,
+    total_cost: torch.Tensor,
+    grad_norms_tuple: Tuple[List[torch.Tensor], List[torch.Tensor]],
+    reward: List[torch.Tensor],
+    entropy: torch.Tensor,
+    approx_kl_divergence: torch.Tensor,
+    reinforce_loss: torch.Tensor,
+    baseline_loss: torch.Tensor,
+    log_likelihood: torch.Tensor,
+    initial_cost: torch.Tensor,
+    show_figs: bool,
+    mini_step: int,
+) -> None:
 
     tb_logger.log_value(
         'learnrate_pg', agent.optimizer.param_groups[0]['lr'], mini_step
@@ -136,7 +140,7 @@ def log_to_tb_train(
     tb_logger.log_value('train/avg_reward', avg_reward, mini_step)
     tb_logger.log_value('train/init_cost', initial_cost.mean(), mini_step)
     tb_logger.log_value('train/max_reward', max_reward, mini_step)
-    grad_norms, grad_norms_clipped = grad_norms
+    grad_norms, grad_norms_clipped = grad_norms_tuple
     tb_logger.log_value('loss/actor_loss', reinforce_loss.item(), mini_step)
     tb_logger.log_value('loss/nll', -log_likelihood.mean().item(), mini_step)
     tb_logger.log_value('train/entropy', entropy.mean().item(), mini_step)

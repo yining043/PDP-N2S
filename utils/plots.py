@@ -5,15 +5,19 @@ Created on Tue May 19 20:47:26 2020
 
 @author: yiningma
 """
+from typing import Optional
 import torch
+from torch import nn
 import os
 from matplotlib import pyplot as plt
 import cv2
 import io
 import numpy as np
 
+from problems.problem_pdp import PDP
 
-def plot_grad_flow(model):
+
+def plot_grad_flow(model: nn.Module) -> cv2.Mat:
     '''Plots the gradients flowing through different layers in the net during training.
     Can be used for checking for possible gradient vanishing / exploding problems.
 
@@ -52,7 +56,7 @@ def plot_grad_flow(model):
     return img
 
 
-def plot_improve_pg(history_value):
+def plot_improve_pg(history_value: torch.Tensor) -> cv2.Mat:
 
     plt.ioff()
     fig = plt.figure(figsize=(4, 3))
@@ -74,7 +78,7 @@ def plot_improve_pg(history_value):
     return img
 
 
-def plot_entropy_pg(entropy):
+def plot_entropy_pg(entropy: torch.Tensor) -> cv2.Mat:
 
     plt.ioff()
     fig = plt.figure(figsize=(4, 3))
@@ -95,7 +99,15 @@ def plot_entropy_pg(entropy):
     return img
 
 
-def plot_tour(problem, solution, coordinates, save=False, p='pdp', dpi=300, show=True):
+def plot_tour(
+    problem: PDP,
+    solution: torch.Tensor,
+    coordinates: torch.Tensor,
+    save: bool = False,
+    p: str = 'pdp',
+    dpi: int = 300,
+    show=True,
+) -> Optional[cv2.Mat]:
 
     if not show:
         plt.ioff()
@@ -108,11 +120,11 @@ def plot_tour(problem, solution, coordinates, save=False, p='pdp', dpi=300, show
         demand = 0
         raise NotImplementedError()
 
-    city_tour = [0]
+    city_tour_list = [0]
     for i in range(size + 1):
-        city_tour += [solution[city_tour[-1]].item()]
+        city_tour_list += [int(solution[city_tour_list[-1]].item())]
 
-    city_tour = torch.tensor(city_tour)
+    city_tour = torch.tensor(city_tour_list)
 
     xy = coordinates.gather(0, city_tour.view(-1, 1).expand(size + 2, 2))
 
@@ -179,7 +191,7 @@ def plot_tour(problem, solution, coordinates, save=False, p='pdp', dpi=300, show
         return None
 
 
-def plot_heatmap(problem, solutions, mask):
+def plot_heatmap(problem: PDP, solutions: torch.Tensor, mask: torch.Tensor) -> None:
 
     problem.use_real_mask = True
     real_mask = ~problem.get_swap_mask(solutions).bool()

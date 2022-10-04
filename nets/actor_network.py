@@ -5,10 +5,10 @@ import torch
 from problems.problem_pdp import PDP
 
 from .graph_layers import (
-    MultiHeadEncoder,
-    MultiHeadDecoder,
+    N2SEncoder,
+    N2SDecoder,
     EmbeddingNet,
-    MultiHeadPosCompat,
+    MultiHeadSelfAttentionScore,
 )
 
 
@@ -67,7 +67,7 @@ class Actor(nn.Module):
 
         self.encoder = mySequential(
             *(
-                MultiHeadEncoder(
+                N2SEncoder(
                     self.n_heads_actor,
                     self.embedding_dim,
                     self.hidden_dim,
@@ -77,15 +77,14 @@ class Actor(nn.Module):
             )
         )  # for NFEs
 
-        self.pos_encoder = MultiHeadPosCompat(
+        self.pos_encoder = MultiHeadSelfAttentionScore(
             self.n_heads_actor,
             self.embedding_dim,
             self.hidden_dim,
         )  # for PFEs
 
-        self.decoder = MultiHeadDecoder(
+        self.decoder = N2SDecoder(
             input_dim=self.embedding_dim,
-            embed_dim=self.embedding_dim,
             v_range=self.range,
         )  # the two propsoed decoders
 

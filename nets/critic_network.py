@@ -2,7 +2,7 @@ from typing import Callable, Tuple
 from torch import nn
 import torch
 
-from .graph_layers import MultiHeadAttentionLayerforCritic, ValueDecoder
+from .graph_layers import CriticEncoder, CriticDecoder
 
 
 class Critic(nn.Module):
@@ -24,7 +24,7 @@ class Critic(nn.Module):
         self.normalization = normalization
         self.encoder = nn.Sequential(
             *(
-                MultiHeadAttentionLayerforCritic(
+                CriticEncoder(
                     self.n_heads,
                     self.embedding_dim,
                     self.hidden_dim,
@@ -34,11 +34,7 @@ class Critic(nn.Module):
             )
         )
 
-        self.value_head = ValueDecoder(
-            n_heads=self.n_heads,
-            input_dim=self.embedding_dim,
-            embed_dim=self.embedding_dim,
-        )
+        self.value_head = CriticDecoder(self.embedding_dim)
 
     __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
 

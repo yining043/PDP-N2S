@@ -5,16 +5,12 @@ Created on Tue May 19 20:47:26 2020
 
 @author: yiningma
 """
-from typing import Optional
 import torch
 from torch import nn
-import os
 from matplotlib import pyplot as plt
 import cv2
 import io
 import numpy as np
-
-from problems.problem_pdp import PDP
 
 
 def plot_grad_flow(model: nn.Module) -> cv2.Mat:
@@ -97,123 +93,3 @@ def plot_entropy_pg(entropy: torch.Tensor) -> cv2.Mat:
     img = cv2.imdecode(img_arr, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img
-
-
-def plot_tour(
-    problem: PDP,
-    solution: torch.Tensor,
-    coordinates: torch.Tensor,
-    save: bool = False,
-    p: str = 'pdp',
-    dpi: int = 300,
-    show=True,
-) -> Optional[cv2.Mat]:
-
-    if not show:
-        plt.ioff()
-
-    fig = plt.figure(figsize=(8, 6))
-
-    size = problem.size
-
-    if p != 'pdp':
-        demand = 0
-        raise NotImplementedError()
-
-    city_tour_list = [0]
-    for i in range(size + 1):
-        city_tour_list += [int(solution[city_tour_list[-1]].item())]
-
-    city_tour = torch.tensor(city_tour_list)
-
-    xy = coordinates.gather(0, city_tour.view(-1, 1).expand(size + 2, 2))
-
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=12)
-    plt.axis([-0.05, 1.05] * 2)
-    plt.plot(xy[:, 0], xy[:, 1], color='black', zorder=1)
-
-    # mark depot
-    g = plt.scatter(xy[0, 0], xy[0, 1], marker='H', s=55, c='red', zorder=2)
-
-    handle = [g, None, None]
-    for i in range(1, size + 1):
-        node = city_tour[i]
-        if node <= size // 2:
-            if p == 'pdp':
-                color, label, marker = 'blue', f'p{node}', '^'
-            else:
-                color, label, marker = (
-                    'blue',
-                    f'p{node}({int(demand[city_tour[i]-1])})',
-                    '^',
-                )
-        else:
-            if p == 'pdp':
-                color, label, marker = 'orange', f'd{node - (size//2)}', 's'
-            else:
-                color, label, marker = (
-                    'orange',
-                    f'd{node - (size//2)}({int(demand[city_tour[i]-1])})',
-                    's',
-                )
-        handle[int(node <= size // 2) + 1] = plt.scatter(
-            xy[i, 0], xy[i, 1], marker=marker, s=45, c=color, zorder=2
-        )
-        plt.annotate(label, (xy[i, 0] - 0.015, xy[i, 1] - 0.06), fontsize=12)
-
-    plt.legend(handle, ['depot', 'delivery node', 'pickup node'], fontsize=12)
-    #    plot show
-    if save:
-        outfolder = f'../results/figures'
-        if not os.path.exists(outfolder):
-            os.makedirs(outfolder)
-        plt.savefig(f'../results/figures/{problem.NAME}_{size}.png', dpi=dpi)
-        plt.savefig(f'../results/figures/{problem.NAME}_{size}.eps', dpi=dpi)
-        print(
-            f'Plot saved to: ',
-            f'../results/figures/{problem.NAME}_{size}.png',
-            f'../results/figures/{problem.NAME}_{size}.eps',
-        )
-
-    if not show:
-        buf = io.BytesIO()
-        plt.savefig(buf, dpi=dpi)
-        plt.close(fig)
-        buf.seek(0)
-        img_arr = np.frombuffer(buf.getvalue(), dtype=np.uint8)
-        buf.close()
-        img = cv2.imdecode(img_arr, 1)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        return img
-    else:
-        plt.show()
-        return None
-
-
-def plot_heatmap(problem: PDP, solutions: torch.Tensor, mask: torch.Tensor) -> None:
-
-    problem.use_real_mask = True
-    real_mask = ~problem.get_swap_mask(solutions).bool()
-    problem.use_real_mask = False
-
-    import seaborn as sns
-
-    sns.set()
-
-    bs = real_mask.size(0)
-
-    fig, ax = plt.subplots(
-        bs, 2, figsize=(6, 3 * bs), gridspec_kw={'width_ratios': [1, 1.25]}
-    )
-
-    for i in range(bs):
-        ax1, ax2 = ax[i]
-        sns.heatmap(real_mask[i], ax=ax1, cbar=False)
-        sns.heatmap(mask.detach()[i], ax=ax2)
-        plt.setp(ax1, ylabel=f'instance {i}')
-
-    ax[0, 1].set_title('Predicted Masks')
-    ax[0, 0].set_title('True Masks')
-
-    plt.show()

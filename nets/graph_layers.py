@@ -825,9 +825,9 @@ class EmbeddingNet(nn.Module):
         super().__init__()
         self.node_dim = node_dim
         self.embedding_dim = embedding_dim
-        self.embedder = nn.Linear(node_dim, embedding_dim, bias=False)
+        self.feature_embedder = nn.Linear(node_dim, embedding_dim, bias=False)
 
-        self.pattern = self._cyclic_position_encoding_pattern(seq_length, embedding_dim)
+        self.pattern = self._cyclic_position_embedding_pattern(seq_length, embedding_dim)
 
         self.init_parameters()
 
@@ -845,67 +845,59 @@ class EmbeddingNet(nn.Module):
         T = 2 * np.pi / omiga
         return np.cos(omiga * np.abs(np.mod(x, 2 * T) - T) + fai)
 
-    def _cyclic_position_encoding_pattern(
-        self, n_position: int, emb_dim: int, mean_pooling: bool = True
+    def _cyclic_position_embedding_pattern(
+        self, seq_length: int, embedding_dim: int, mean_pooling: bool = True
     ) -> torch.Tensor:
 
-        skip_base = np.power(n_position, 1 / (emb_dim // 2))
-        skip_set = np.linspace(skip_base, n_position, emb_dim // 2, dtype='int')
-        x = np.zeros((n_position, emb_dim))
+        Td_base = np.power(seq_length, 1 / (embedding_dim // 2))
+        Td_set = np.linspace(Td_base, seq_length, embedding_dim // 2, dtype='int')
+        g = np.zeros((seq_length, embedding_dim))
 
-        for i in range(emb_dim):
-            skip = (
-                skip_set[i // 3 * 3 + 1]
-                if (i // 3 * 3 + 1) < (emb_dim // 2)
-                else skip_set[-1]
+        for d in range(embedding_dim):
+            Td = (
+                Td_set[d // 3 * 3 + 1]
+                if (d // 3 * 3 + 1) < (embedding_dim // 2)
+                else Td_set[-1]
             )  # (4)
 
             # get z(i) in the paper (via longer_pattern)
-            if n_position > skip:
-                longer_pattern = np.arange(
-                    0, np.ceil((n_position) / skip) * skip + 0.01, 0.01
-                )
-            else:
-                longer_pattern = np.arange(0, n_position + 0.01, 0.01)
-                skip = n_position
+            longer_pattern = np.arange(0, np.ceil(seq_length / Td) * Td, 0.01)
 
-            num = len(longer_pattern) - 1
-            omiga = 2 * np.pi / skip
-
-            # see Appendix B
+            num = len(longer_pattern)
+            omiga = 2 * np.pi / Td
             fai = (
                 0
-                if i <= (emb_dim // 2)
-                else 2 * np.pi * ((-i + (emb_dim // 2)) / (emb_dim // 2))
+                if d <= (embedding_dim // 2)
+                else 2 * np.pi * ((-d + (embedding_dim // 2)) / (embedding_dim // 2))
             )
 
             # Eq. (2) in the paper
-            if i % 2 == 1:
-                x[:, i] = self._base_cos(longer_pattern, omiga, fai)[
-                    np.linspace(0, num, n_position + 1, dtype='int')
-                ][:n_position]
+            if d % 2 == 1:
+                g[:, d] = self._base_cos(longer_pattern, omiga, fai)[
+                    np.linspace(0, num, seq_length, dtype='int', endpoint=False)
+                ]
             else:
-                x[:, i] = self._base_sin(longer_pattern, omiga, fai)[
-                    np.linspace(0, num, n_position + 1, dtype='int')
-                ][:n_position]
+                g[:, d] = self._base_sin(longer_pattern, omiga, fai)[
+                    np.linspace(0, num, seq_length, dtype='int', endpoint=False)
+                ]
 
-        pattern: torch.Tensor = torch.from_numpy(x).type(torch.FloatTensor)  # type: ignore
+        pattern: torch.Tensor = torch.from_numpy(g).type(torch.FloatTensor)  # type: ignore
         pattern_sum = torch.zeros_like(pattern)
 
         # averaging the adjacient embeddings if needed (optional, almost the same performance)
-        arange = torch.arange(n_position)
+        arange = torch.arange(seq_length)
         pooling = [0] if not mean_pooling else [-2, -1, 0, 1, 2]
         time = 0
-        for i in pooling:
+        for d in pooling:
             time += 1
-            index = (arange + i + n_position) % n_position
+            index = (arange + d + seq_length) % seq_length
             pattern_sum += pattern.gather(0, index.view(-1, 1).expand_as(pattern))
         pattern = 1.0 / time * pattern_sum - pattern.mean(0)
         #### ----
 
-        return pattern
+        return pattern  # (seq_length, embedding_dim)
 
-    def _position_encoding(
+    def _position_embedding(
         self, solutions: torch.Tensor, embedding_dim: int, clac_stacks: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         batch_size, seq_length = solutions.size()
@@ -919,7 +911,7 @@ class EmbeddingNet(nn.Module):
         )
 
         # get index according to the solutions
-        visited_time = torch.zeros((batch_size, seq_length), device=solutions.device)
+        visit_index = torch.zeros((batch_size, seq_length), device=solutions.device)
 
         pre = torch.zeros((batch_size), device=solutions.device).long()
 
@@ -934,8 +926,8 @@ class EmbeddingNet(nn.Module):
             stacks[arange, pre] = 0  # fix bug: topk is not stable sorting
 
         for i in range(seq_length):
-            current_nodes = solutions[arange, pre]
-            visited_time[arange, current_nodes] = i + 1
+            current_nodes = solutions[arange, pre]  # (batch_size,)
+            visit_index[arange, current_nodes] = i + 1
             pre = solutions[arange, pre]
 
             if clac_stacks:
@@ -943,22 +935,22 @@ class EmbeddingNet(nn.Module):
                 index2 = (current_nodes > half_size) & (current_nodes > 0)
                 if index1.any():
                     stacks[index1, current_nodes[index1]] = i + 1
-                if (index2).any():
+                if index2.any():
                     stacks[
                         index2, current_nodes[index2] - half_size
                     ] = -0.01  # fix bug: topk is not stable sorting
                 top2[arange, current_nodes] = stacks.topk(2)[1]
 
         index = (
-            (visited_time % seq_length)
+            (visit_index % seq_length)
             .long()
             .unsqueeze(-1)
             .expand(batch_size, seq_length, embedding_dim)
         )
-        # return
+
         return (
             torch.gather(position_enc_new, 1, index),
-            visited_time.long(),
+            visit_index.long(),
             top2 if clac_stacks else None,
         )
 
@@ -969,11 +961,11 @@ class EmbeddingNet(nn.Module):
     def forward(
         self, x: torch.Tensor, solutions: torch.Tensor, clac_stacks: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        pos_enc, visited_time, top2 = self._position_encoding(
+        pos_emb, visit_index, top2 = self._position_embedding(
             solutions, self.embedding_dim, clac_stacks
         )
-        x_embedding = self.embedder(x)
-        return x_embedding, pos_enc, visited_time, top2
+        fea_emb = self.feature_embedder(x)
+        return fea_emb, pos_emb, visit_index, top2
 
 
 class CriticEncoder(nn.Sequential):

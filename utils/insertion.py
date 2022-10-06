@@ -1,12 +1,9 @@
 from typing import List, Tuple
 import numpy as np
 import numpy.typing as npt
-import os
 import time
-from datetime import timedelta
 from scipy.spatial import distance_matrix
 import torch
-import re
 
 
 def _calc_insert_cost(

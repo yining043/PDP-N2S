@@ -1,7 +1,6 @@
 from typing import List, Optional, Tuple
 import torch
 import math
-import numpy as np
 from tensorboard_logger import Logger as TbLogger
 from agent.agent import Agent
 

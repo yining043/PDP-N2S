@@ -23,7 +23,7 @@ class Option(argparse.Namespace):
     actor_head_num: int
     critic_head_num: int
     embedding_dim: int
-    hidden_dim: int
+    ff_hidden_dim: int
     n_encode_layers: int
     normalization: str
 
@@ -127,7 +127,7 @@ def get_options(args: Optional[List[str]] = None) -> Option:
         help='dimension of input embeddings (NEF & PFE)',
     )
     parser.add_argument(
-        '--hidden_dim',
+        '--ff_hidden_dim',
         type=int,
         default=128,
         help='dimension of hidden layers in Enc/Dec',

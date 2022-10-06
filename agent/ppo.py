@@ -50,7 +50,7 @@ class PPO(Agent):
         self.actor = Actor(
             problem_name=problem_name,
             embedding_dim=opts.embedding_dim,
-            hidden_dim=opts.hidden_dim,
+            ff_hidden_dim=opts.ff_hidden_dim,
             n_heads_actor=opts.actor_head_num,
             n_layers=opts.n_encode_layers,
             normalization=opts.normalization,
@@ -62,9 +62,8 @@ class PPO(Agent):
 
             # figure out the critic
             self.critic = Critic(
-                problem_name=problem_name,
                 embedding_dim=opts.embedding_dim,
-                hidden_dim=opts.hidden_dim,
+                ff_hidden_dim=opts.ff_hidden_dim,
                 n_heads=opts.critic_head_num,
                 n_layers=opts.n_encode_layers,
                 normalization=opts.normalization,

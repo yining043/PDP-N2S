@@ -8,17 +8,16 @@ from .graph_layers import CriticEncoder, CriticDecoder
 class Critic(nn.Module):
     def __init__(
         self,
-        problem_name: str,
         embedding_dim: int,
-        hidden_dim: int,
+        ff_hidden_dim: int,
         n_heads: int,
         n_layers: int,
         normalization: str,
     ) -> None:
 
-        super(Critic, self).__init__()
+        super().__init__()
         self.embedding_dim = embedding_dim
-        self.hidden_dim = hidden_dim
+        self.ff_hidden_dim = ff_hidden_dim
         self.n_heads = n_heads
         self.n_layers = n_layers
         self.normalization = normalization
@@ -27,7 +26,7 @@ class Critic(nn.Module):
                 CriticEncoder(
                     self.n_heads,
                     self.embedding_dim,
-                    self.hidden_dim,
+                    self.ff_hidden_dim,
                     self.normalization,
                 )
                 for _ in range(1)
@@ -39,11 +38,11 @@ class Critic(nn.Module):
     __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
 
     def forward(
-        self, input: torch.Tensor, cost: torch.Tensor
+        self, h_features: torch.Tensor, cost: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        h_features = input.detach()
-        h_em = self.encoder(h_features)
-        baseline_value = self.value_head(h_em, cost)
+        h_fea = h_features.detach()
+        h_enc = self.encoder(h_fea)
+        baseline_value = self.value_head(h_enc, cost)
 
         return baseline_value.detach().squeeze(), baseline_value.squeeze()

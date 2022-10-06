@@ -14,11 +14,11 @@ from .graph_layers import (
 
 class mySequential(nn.Sequential):
 
-    __call__: Callable[..., torch.Tensor]
+    __call__: Callable[..., Union[Tuple[torch.Tensor], torch.Tensor]]
 
     def forward(
         self, *inputs: Union[Tuple[torch.Tensor], torch.Tensor]
-    ) -> torch.Tensor:
+    ) -> Union[Tuple[torch.Tensor], torch.Tensor]:
         for module in self._modules.values():
             if type(inputs) == tuple:
                 inputs = module(*inputs)
@@ -27,65 +27,51 @@ class mySequential(nn.Sequential):
         return inputs  # type: ignore
 
 
-def get_action_sig(action_record: List[torch.Tensor]) -> torch.Tensor:
-    action_record_tensor = torch.stack(action_record)
-    return torch.cat(
-        (
-            action_record_tensor[-3:].transpose(0, 1),
-            action_record_tensor.mean(0).unsqueeze(1),
-        ),
-        1,
-    )
-
-
 class Actor(nn.Module):
     def __init__(
         self,
         problem_name: str,
         embedding_dim: int,
-        hidden_dim: int,
+        ff_hidden_dim: int,
         n_heads_actor: int,
         n_layers: int,
         normalization: str,
         v_range: float,
         seq_length: int,
     ) -> None:
-        super(Actor, self).__init__()
+        super().__init__()
 
         self.embedding_dim = embedding_dim
-        self.hidden_dim = hidden_dim
+        self.ff_hidden_dim = ff_hidden_dim
         self.n_heads_actor = n_heads_actor
         self.n_layers = n_layers
         self.normalization = normalization
-        self.range = v_range
+        self.v_range = v_range
         self.seq_length = seq_length
-        self.clac_stacks = problem_name == 'pdtspl'
+        self.clac_stacks = bool(problem_name == 'pdtspl')
         self.node_dim = 2
 
         # networks
         self.embedder = EmbeddingNet(self.node_dim, self.embedding_dim, self.seq_length)
+
+        self.pos_emb_encoder = MultiHeadSelfAttentionScore(
+            self.n_heads_actor, self.embedding_dim
+        )  # for PFEs
 
         self.encoder = mySequential(
             *(
                 N2SEncoder(
                     self.n_heads_actor,
                     self.embedding_dim,
-                    self.hidden_dim,
+                    self.ff_hidden_dim,
                     self.normalization,
                 )
                 for _ in range(self.n_layers)
             )
         )  # for NFEs
 
-        self.pos_encoder = MultiHeadSelfAttentionScore(
-            self.n_heads_actor,
-            self.embedding_dim,
-            self.hidden_dim,
-        )  # for PFEs
-
         self.decoder = N2SDecoder(
-            input_dim=self.embedding_dim,
-            v_range=self.range,
+            self.embedding_dim, self.v_range
         )  # the two propsoed decoders
 
         print(self.get_parameter_number())
@@ -94,6 +80,17 @@ class Actor(nn.Module):
         total_num = sum(p.numel() for p in self.parameters())
         trainable_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
         return {'Total': total_num, 'Trainable': trainable_num}
+
+    @staticmethod
+    def get_action_recent(action_record: List[torch.Tensor]) -> torch.Tensor:
+        action_record_tensor = torch.stack(action_record)
+        return torch.cat(
+            (
+                action_record_tensor[-3:].transpose(0, 1),
+                action_record_tensor.mean(0).unsqueeze(1),
+            ),
+            1,
+        )
 
     __call__: Callable[
         ...,
@@ -133,37 +130,37 @@ class Actor(nn.Module):
     ]:
 
         # the embedded input x
-        bs, gs, in_d = x_in.size()
+        # batch_size, graph_size, node_dim = x_in.size()
 
-        h_embed, h_pos, visited_time, top2 = self.embedder(
+        h_fea, g_pos, visit_index, top2 = self.embedder(
             x_in, solution, self.clac_stacks
         )
 
         # pass through encoder
-        pos_em = self.pos_encoder(h_pos)
-        h_em = self.encoder(h_embed, pos_em)[0]
+        aux_att = self.pos_emb_encoder(g_pos)
+        h_wave = self.encoder(h_fea, aux_att)[0]
 
         if only_critic:
-            return h_em
+            return h_wave
 
-        visited_order_map = problem.get_visited_order_map(visited_time)
-        del visited_time
+        visited_order_map = problem.get_visited_order_map(visit_index)
+        del visit_index
 
         # pass through decoder
         action, log_ll, entropy = self.decoder(
-            problem,
-            h_em,
-            solution,
-            x_in,
-            top2,
-            visited_order_map,
-            exchange,
-            get_action_sig(action_record).to(x_in.device),
-            fixed_action,
+            problem=problem,
+            h_wave=h_wave,
+            solution=solution,
+            x_in=x_in,
+            top2=top2,
+            visited_order_map=visited_order_map,
+            pre_action=exchange,
+            selection_recent=Actor.get_action_recent(action_record).to(x_in.device),
+            fixed_action=fixed_action,
             require_entropy=require_entropy,
         )
 
         if require_entropy:
-            return action, log_ll.squeeze(), (h_em) if to_critic else None, entropy
+            return action, log_ll.squeeze(), h_wave if to_critic else None, entropy
         else:
-            return action, log_ll.squeeze(), (h_em) if to_critic else None
+            return action, log_ll.squeeze(), h_wave if to_critic else None

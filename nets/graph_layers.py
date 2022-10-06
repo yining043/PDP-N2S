@@ -136,9 +136,9 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class MultiHeadSelfAttentionScore(nn.Module):
-    def __init__(self, n_heads: int, input_dim: int, out_dim: int) -> None:
+    def __init__(self, n_heads: int, input_dim: int) -> None:
         super().__init__()
-        self.MHA = MultiHeadAttention(n_heads, input_dim, input_dim, None, out_dim)
+        self.MHA = MultiHeadAttention(n_heads, input_dim, input_dim, None, input_dim)
 
     __call__: Callable[..., torch.Tensor]
 
@@ -159,15 +159,15 @@ class CriticDecoder(nn.Module):
 
     __call__: Callable[..., torch.Tensor]
 
-    def forward(self, h_em: torch.Tensor, cost: torch.Tensor) -> torch.Tensor:
+    def forward(self, h_wave: torch.Tensor, best_cost: torch.Tensor) -> torch.Tensor:
 
         # h: (batch_size, graph_size, input_size)
-        mean_pooling = h_em.mean(1)  # mean Pooling (batch_size, input_size)
+        mean_pooling = h_wave.mean(1)  # mean Pooling (batch_size, input_size)
         graph_feature: torch.Tensor = self.project_graph(mean_pooling)[
             :, None, :
         ]  # (batch_size, 1, input_dim/2)
         node_feature: torch.Tensor = self.project_node(
-            h_em
+            h_wave
         )  # (batch_size, graph_size, input_dim/2)
 
         # pass through value_head, get estimated value
@@ -179,7 +179,7 @@ class CriticDecoder(nn.Module):
             (
                 fusion.mean(1),
                 fusion.max(1)[0],  # max_pooling
-                cost.to(h_em.device),
+                best_cost.to(h_wave.device),
             ),
             -1,
         )  # (batch_size, input_dim + 1)
@@ -215,8 +215,8 @@ class MLP(nn.Module):
 
     __call__: Callable[..., torch.Tensor]
 
-    def forward(self, in_: torch.Tensor) -> torch.Tensor:
-        result = self.ReLU(self.fc1(in_))
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        result = self.ReLU(self.fc1(input))
         result = self.dropout(result)
         result = self.ReLU(self.fc2(result))
         result = self.fc3(result).squeeze(-1)
@@ -250,16 +250,16 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
 
     def forward(
         self,
-        h: torch.Tensor,  # hidden state from encoder
-        rec: torch.Tensor,  # if rec=[2,0,1], means 0-2-1-0.
-        selection_sig: torch.Tensor,  # (batch_size, 4, graph_size/2)
+        h_hat: torch.Tensor,  # hidden state from encoder
+        solution: torch.Tensor,  # if solution=[2,0,1], means 0-2-1-0.
+        selection_recent: torch.Tensor,  # (batch_size, 4, graph_size/2)
     ) -> torch.Tensor:
 
-        pre = rec.argsort()  # pre=[1,2,0]
-        post = rec.gather(1, rec)  # post=[1,2,0]
-        batch_size, graph_size, input_dim = h.size()
+        pre = solution.argsort()  # pre=[1,2,0]
+        post = solution.gather(1, solution)  # post=[1,2,0]
+        batch_size, graph_size, input_dim = h_hat.size()
 
-        hflat = h.contiguous().view(-1, input_dim)  #################   reshape
+        hflat = h_hat.contiguous().view(-1, input_dim)  #################   reshape
 
         shp = (self.n_heads, batch_size, graph_size, self.hidden_dim)
 
@@ -294,7 +294,7 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
             torch.cat(
                 (
                     compatibility_pairing.permute(1, 2, 0),
-                    selection_sig.permute(0, 2, 1),
+                    selection_recent.permute(0, 2, 1),
                 ),
                 -1,
             )
@@ -329,26 +329,30 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
 
     def forward(
         self,
-        h: torch.Tensor,
+        h_hat: torch.Tensor,
         pos_pickup: torch.Tensor,  # (batch_size)
         pos_delivery: torch.Tensor,  # (batch_size)
-        rec: torch.Tensor,  # (batch, graph_size)
+        solution: torch.Tensor,  # (batch, graph_size)
     ) -> torch.Tensor:
 
-        batch_size, graph_size, input_dim = h.size()
+        batch_size, graph_size, input_dim = h_hat.size()
         shp = (batch_size, graph_size, graph_size, self.n_heads)
         shp_p = (batch_size, -1, 1, self.n_heads)
         shp_d = (batch_size, 1, -1, self.n_heads)
 
-        arange = torch.arange(batch_size, device=h.device)
-        h_pickup = h[arange, pos_pickup].unsqueeze(1)  # (batch_size, 1, input_dim)
-        h_delivery = h[arange, pos_delivery].unsqueeze(1)  # (batch_size, 1, input_dim)
-        h_K_neibour = h.gather(
-            1, rec.view(batch_size, graph_size, 1).expand_as(h)
+        arange = torch.arange(batch_size, device=h_hat.device)
+        h_pickup = h_hat[arange, pos_pickup].unsqueeze(1)  # (batch_size, 1, input_dim)
+        h_delivery = h_hat[arange, pos_delivery].unsqueeze(
+            1
+        )  # (batch_size, 1, input_dim)
+        h_K_neibour = h_hat.gather(
+            1, solution.view(batch_size, graph_size, 1).expand_as(h_hat)
         )  # (batch_size, graph_size, input_dim)
 
         compatibility_pickup_pre = (
-            self.compater_insert1(h_pickup, h)  # (n_heads, batch_size, 1, graph_size)
+            self.compater_insert1(
+                h_pickup, h_hat
+            )  # (n_heads, batch_size, 1, graph_size)
             .permute(1, 2, 3, 0)  # (batch_size, 1, graph_size, n_heads)
             .view(shp_p)  # (batch_size, graph_size, 1, n_heads)
             .expand(shp)  # (batch_size, graph_size, graph_size, n_heads)
@@ -360,7 +364,9 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
             .expand(shp)
         )
         compatibility_delivery_pre = (
-            self.compater_insert1(h_delivery, h)  # (n_heads, batch_size, 1, graph_size)
+            self.compater_insert1(
+                h_delivery, h_hat
+            )  # (n_heads, batch_size, 1, graph_size)
             .permute(1, 2, 3, 0)  # (batch_size, 1, graph_size, n_heads)
             .view(shp_d)  # (batch_size, 1, graph_size, n_heads)
             .expand(shp)  # (batch_size, graph_size, graph_size, n_heads)
@@ -412,32 +418,32 @@ class N2SDecoder(nn.Module):
     def forward(
         self,
         problem: PDP,
-        h_em: torch.Tensor,
-        rec: torch.Tensor,
+        h_wave: torch.Tensor,
+        solution: torch.Tensor,
         x_in: torch.Tensor,
         top2: torch.Tensor,
         visited_order_map: torch.Tensor,
         pre_action: torch.Tensor,
-        selection_sig: torch.Tensor,
+        selection_recent: torch.Tensor,
         fixed_action: Optional[torch.Tensor] = None,
         require_entropy: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
 
-        batch_size, graph_size, input_dim = h_em.size()
+        batch_size, graph_size, input_dim = h_wave.size()
         half_pos = (graph_size - 1) // 2
 
         arange = torch.arange(batch_size)
 
-        h: torch.Tensor = self.project_node(h_em) + self.project_graph(h_em.max(1)[0])[
-            :, None, :
-        ].expand(
+        h_hat: torch.Tensor = self.project_node(h_wave) + self.project_graph(
+            h_wave.max(1)[0]
+        )[:, None, :].expand(
             batch_size, graph_size, input_dim
         )  # (11)
 
         ############# action1 removal
         if TYPE_REMOVAL == 'N2S':
             action_removal_table = (
-                torch.tanh(self.compater_removal(h, rec, selection_sig).squeeze())
+                torch.tanh(self.compater_removal(h_hat, solution, selection_recent).squeeze())
                 * self.range
             )
             if pre_action is not None and pre_action[0, 0] > 0:
@@ -447,11 +453,11 @@ class N2SDecoder(nn.Module):
             )  # log-likelihood
             probs_removal = F.softmax(action_removal_table, dim=-1)
         elif TYPE_REMOVAL == 'random':
-            probs_removal = torch.rand(batch_size, graph_size // 2).to(h_em.device)
+            probs_removal = torch.rand(batch_size, graph_size // 2).to(h_wave.device)
         elif TYPE_REMOVAL == 'greedy':
             # epi-greedy
             first_row = (
-                torch.arange(graph_size, device=rec.device)
+                torch.arange(graph_size, device=solution.device)
                 .long()
                 .unsqueeze(0)
                 .expand(batch_size, graph_size)
@@ -460,10 +466,10 @@ class N2SDecoder(nn.Module):
                 1, first_row.unsqueeze(-1).expand(batch_size, graph_size, 2)
             )
             d_i_next = x_in.gather(
-                1, rec.long().unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1, solution.long().unsqueeze(-1).expand(batch_size, graph_size, 2)
             )
             d_i_pre = x_in.gather(
-                1, rec.argsort().long().unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1, solution.argsort().long().unsqueeze(-1).expand(batch_size, graph_size, 2)
             )
             cost_ = (
                 (d_i_pre - d_i).norm(p=2, dim=2)
@@ -472,7 +478,7 @@ class N2SDecoder(nn.Module):
             )[:, 1:]
             probs_removal = cost_[:, : graph_size // 2] + cost_[:, graph_size // 2 :]
             probs_removal_random = torch.rand(batch_size, graph_size // 2).to(
-                h_em.device
+                h_wave.device
             )
         else:
             assert False
@@ -484,7 +490,7 @@ class N2SDecoder(nn.Module):
                 action_removal_random = probs_removal_random.multinomial(1)
                 action_removal_greedy = probs_removal.max(-1)[1].unsqueeze(1)
                 action_removal = torch.where(
-                    torch.rand(batch_size, 1).to(h_em.device) < 0.1,
+                    torch.rand(batch_size, 1).to(h_wave.device) < 0.1,
                     action_removal_random,
                     action_removal_greedy,
                 )
@@ -495,7 +501,7 @@ class N2SDecoder(nn.Module):
         selected_log_ll_action1 = (
             log_ll_removal.gather(1, action_removal)  # type: ignore
             if self.training and TYPE_REMOVAL == 'N2S'
-            else torch.tensor(0).to(h.device)
+            else torch.tensor(0).to(h_hat.device)
         )
 
         ############# action2
@@ -508,18 +514,18 @@ class N2SDecoder(nn.Module):
         )
         if TYPE_REINSERTION == 'N2S':
             action_reinsertion_table = (
-                torch.tanh(self.compater_reinsertion(h, pos_pickup, pos_delivery, rec))
+                torch.tanh(self.compater_reinsertion(h_hat, pos_pickup, pos_delivery, solution))
                 * self.range
             )
         elif TYPE_REINSERTION == 'random':
             action_reinsertion_table = torch.ones(
                 batch_size, graph_size, graph_size
-            ).to(h_em.device)
+            ).to(h_wave.device)
         elif TYPE_REMOVAL == 'greedy':
             # epi-greedy
             pos_pickup = 1 + action_removal
             pos_delivery = pos_pickup + half_pos
-            rec_new = rec.clone()
+            rec_new = solution.clone()
             argsort = rec_new.argsort()
             pre_pairfirst = argsort.gather(1, pos_pickup)
             post_pairfirst = rec_new.gather(1, pos_pickup)
@@ -531,7 +537,7 @@ class N2SDecoder(nn.Module):
             rec_new.scatter_(1, pre_pairsecond, post_pairsecond)
             # perform calc on new rec_new
             first_row = (
-                torch.arange(graph_size, device=rec.device)
+                torch.arange(graph_size, device=solution.device)
                 .long()
                 .unsqueeze(0)
                 .expand(batch_size, graph_size)
@@ -564,7 +570,7 @@ class N2SDecoder(nn.Module):
             )
             action_reinsertion_table_random = torch.ones(
                 batch_size, graph_size, graph_size
-            ).to(h_em.device)
+            ).to(h_wave.device)
             action_reinsertion_table_random[mask_table] = -1e20
             action_reinsertion_table_random = action_reinsertion_table_random.view(
                 batch_size, -1
@@ -598,7 +604,7 @@ class N2SDecoder(nn.Module):
                 action_reinsertion_random = probs_reinsertion_random.multinomial(1)
                 action_reinsertion_greedy = probs_reinsertion.max(-1)[1].unsqueeze(1)
                 pair_index = torch.where(
-                    torch.rand(batch_size, 1).to(h_em.device) < 0.1,
+                    torch.rand(batch_size, 1).to(h_wave.device) < 0.1,
                     action_reinsertion_random,
                     action_reinsertion_greedy,
                 )
@@ -617,7 +623,7 @@ class N2SDecoder(nn.Module):
         selected_log_ll_action2 = (
             log_ll_reinsertion.gather(1, pair_index)  # type: ignore
             if self.training and TYPE_REINSERTION == 'N2S'
-            else torch.tensor(0).to(h.device)
+            else torch.tensor(0).to(h_hat.device)
         )
 
         log_ll = selected_log_ll_action1 + selected_log_ll_action2
@@ -664,13 +670,13 @@ class Syn_Att(nn.Module):  # (6) - (10)
     __call__: Callable[..., torch.Tensor]
 
     def forward(
-        self, h: torch.Tensor, out_source_attn: torch.Tensor
+        self, h_fea: torch.Tensor, aux_att_score: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # h should be (batch_size, n_query, input_dim)
-        batch_size, n_query, input_dim = h.size()
+        batch_size, n_query, input_dim = h_fea.size()
 
-        hflat = h.contiguous().view(-1, input_dim)
+        hflat = h_fea.contiguous().view(-1, input_dim)
 
         shp = (self.n_heads, batch_size, n_query, self.hidden_dim)
 
@@ -681,7 +687,7 @@ class Syn_Att(nn.Module):  # (6) - (10)
 
         # Calculate compatibility (n_heads, batch_size, n_query, n_key)
         compatibility = torch.cat(
-            (torch.matmul(Q, K.transpose(2, 3)), out_source_attn), 0
+            (torch.matmul(Q, K.transpose(2, 3)), aux_att_score), 0
         )
 
         attn_raw = compatibility.permute(
@@ -694,7 +700,7 @@ class Syn_Att(nn.Module):  # (6) - (10)
             F.softmax(attn, dim=-1), V
         )  # (n_heads, batch_size, n_query, hidden_dim)
 
-        out = torch.mm(
+        h_wave = torch.mm(
             heads.permute(1, 2, 0, 3)  # (batch_size, n_query, n_heads, hidden_dim)
             .contiguous()
             .view(
@@ -703,7 +709,7 @@ class Syn_Att(nn.Module):  # (6) - (10)
             self.W_out.view(-1, self.input_dim),  # (n_heads * hidden_dim, input_dim)
         ).view(batch_size, n_query, self.input_dim)
 
-        return out, out_source_attn
+        return h_wave, aux_att_score
 
 
 class Normalization(nn.Module):
@@ -753,13 +759,13 @@ class SynAttNormSubLayer(nn.Module):
     __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
 
     def forward(
-        self, h: torch.Tensor, out_source_attn: torch.Tensor
+        self, h_fea: torch.Tensor, aux_att_score: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Attention and Residual connection
-        out, out_source_attn = self.SynAtt(h, out_source_attn)
+        h_wave, aux_att_score = self.SynAtt(h_fea, aux_att_score)
 
         # Normalization
-        return self.Norm(out + h), out_source_attn
+        return self.Norm(h_wave + h_fea), aux_att_score
 
 
 class FFNormSubLayer(nn.Module):
@@ -809,10 +815,10 @@ class N2SEncoder(nn.Module):
     __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
 
     def forward(
-        self, h: torch.Tensor, out_source_attn: torch.Tensor
+        self, h_fea: torch.Tensor, aux_att_score: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        h, out_source_attn = self.SynAttNorm_sublayer(h, out_source_attn)
-        return self.FFNorm_sublayer(h), out_source_attn
+        h_wave, aux_att_score = self.SynAttNorm_sublayer(h_fea, aux_att_score)
+        return self.FFNorm_sublayer(h_wave), aux_att_score
 
 
 class EmbeddingNet(nn.Module):
@@ -827,7 +833,9 @@ class EmbeddingNet(nn.Module):
         self.embedding_dim = embedding_dim
         self.feature_embedder = nn.Linear(node_dim, embedding_dim, bias=False)
 
-        self.pattern = self._cyclic_position_embedding_pattern(seq_length, embedding_dim)
+        self.pattern = self._cyclic_position_embedding_pattern(
+            seq_length, embedding_dim
+        )
 
         self.init_parameters()
 
@@ -904,7 +912,7 @@ class EmbeddingNet(nn.Module):
         half_size = seq_length // 2
 
         # expand for every batch
-        position_enc_new = (
+        position_emb_new = (
             self.pattern.expand(batch_size, seq_length, embedding_dim)
             .clone()
             .to(solutions.device)
@@ -949,7 +957,7 @@ class EmbeddingNet(nn.Module):
         )
 
         return (
-            torch.gather(position_enc_new, 1, index),
+            torch.gather(position_emb_new, 1, index),
             visit_index.long(),
             top2 if clac_stacks else None,
         )

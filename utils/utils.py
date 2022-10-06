@@ -47,7 +47,7 @@ def move_to_cuda(var: Any, device: Union[int, torch.device]) -> Any:
 
 def clip_grad_norms(
     param_groups: List[dict], max_norm: float = math.inf
-) -> Tuple[List[torch.Tensor], List[Any]]:
+) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """
     Clips the norms for all param groups to max_norm and returns gradient norms before clipping
     :param optimizer:
@@ -66,6 +66,11 @@ def clip_grad_norms(
         for idx, group in enumerate(param_groups)
     ]
     grad_norms_clipped = (
-        [min(g_norm, max_norm) for g_norm in grad_norms] if max_norm > 0 else grad_norms
+        [
+            min(g_norm, torch.tensor(max_norm), key=lambda x: x.item())
+            for g_norm in grad_norms
+        ]
+        if max_norm > 0
+        else grad_norms
     )
     return grad_norms, grad_norms_clipped

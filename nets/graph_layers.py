@@ -788,47 +788,29 @@ class EmbeddingNet(nn.Module):
             stdv = 1. / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
             
-    def basesin(self, x, omiga, fai = 0):
-        T = 2 * np.pi / omiga
-        return np.sin(omiga * np.abs(np.mod(x, 2 * T) - T) + fai)
+    def basesin(self, x, T, fai = 0):
+        return np.sin(2 * np.pi / T * np.abs(np.mod(x, 2 * T) - T) + fai)
     
-    def basecos(self, x, omiga, fai = 0):
-        T = 2 * np.pi / omiga
-        return np.cos(omiga * np.abs(np.mod(x, 2 * T) - T) + fai)
-    
+    def basecos(self, x, T, fai = 0):
+        return np.cos(2 * np.pi / T * np.abs(np.mod(x, 2 * T) - T) + fai)
     
     def cyclic_position_encoding_pattern(self, n_position, emb_dim, mean_pooling = True):
         
-        skip_base = np.power(n_position, 1 / (emb_dim // 2))
-        skip_set = np.linspace(skip_base, n_position, emb_dim // 2, dtype = 'int')
+        Td_set = np.linspace(np.power(n_position, 1 / (emb_dim // 2)), n_position, emb_dim // 2, dtype = 'int')
         x = np.zeros((n_position, emb_dim))
          
         for i in range(emb_dim):
-            # see Appendix B
-            skip = skip_set[i //3 * 3 + 1] if  (i //3 * 3 + 1) < (emb_dim // 2) else skip_set[-1]
-            
-            # get z(i) in the paper (via longer_pattern) 
-            if n_position > skip:
-                longer_pattern = np.arange(0, np.ceil( (n_position) / skip) * skip + 0.01, 0.01)
-            else:
-                longer_pattern = np.arange(0, n_position + 0.01, 0.01)
-                skip = n_position
-                
-            num = len(longer_pattern) - 1
-            omiga = 2 * np.pi / skip
-            
-            # see Appendix B
+            Td = Td_set[i //3 * 3 + 1] if  (i //3 * 3 + 1) < (emb_dim // 2) else Td_set[-1]
             fai = 0 if i <= (emb_dim // 2) else  2 * np.pi * ((-i + (emb_dim // 2)) / (emb_dim // 2))
-            
-            # Eq. (4) in the paper
+            longer_pattern = np.arange(0, np.ceil((n_position) / Td) * Td, 0.01)
             if i % 2 ==1:
-                x[:,i] = self.basecos(longer_pattern, omiga, fai)[np.linspace(0, num, n_position + 1, dtype = 'int')][:n_position]
+                x[:,i] = self.basecos(longer_pattern, Td, fai)[np.linspace(0, len(longer_pattern), n_position, dtype = 'int', endpoint = False)]
             else:
-                x[:,i] = self.basesin(longer_pattern, omiga, fai)[np.linspace(0, num, n_position + 1, dtype = 'int')][:n_position]
+                x[:,i] = self.basesin(longer_pattern, Td, fai)[np.linspace(0, len(longer_pattern), n_position, dtype = 'int', endpoint = False)]
                 
         pattern = torch.from_numpy(x).type(torch.FloatTensor)
         pattern_sum = torch.zeros_like(pattern)
-        
+
         # averaging the adjacient embeddings if needed (optional, almost the same performance)
         arange = torch.arange(n_position)
         pooling = [0] if not mean_pooling else[-2, -1, 0, 1, 2]
@@ -840,8 +822,7 @@ class EmbeddingNet(nn.Module):
         pattern = 1. / time * pattern_sum - pattern.mean(0)
         #### ---- 
         
-        return pattern
-    
+        return pattern    
 
     def position_encoding(self, solutions, embedding_dim, clac_stacks = False):
          batch_size, seq_length = solutions.size()

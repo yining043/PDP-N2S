@@ -227,7 +227,8 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
     def __init__(self, n_heads: int, input_dim: int) -> None:
         super().__init__()
 
-        hidden_dim = input_dim // n_heads
+        # hidden_dim = input_dim // n_heads
+        hidden_dim = input_dim
 
         self.n_heads = n_heads
         self.input_dim = input_dim
@@ -310,11 +311,11 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
         self.n_heads = n_heads
 
         self.compater_insert1 = MultiHeadAttention(
-            n_heads, input_dim, input_dim, None, input_dim
+            n_heads, input_dim, input_dim, None, input_dim * n_heads
         )
 
         self.compater_insert2 = MultiHeadAttention(
-            n_heads, input_dim, input_dim, None, input_dim
+            n_heads, input_dim, input_dim, None, input_dim * n_heads
         )
 
         self.agg = MLP(4 * n_heads, 32, 32, 1, 0)
@@ -443,7 +444,9 @@ class N2SDecoder(nn.Module):
         ############# action1 removal
         if TYPE_REMOVAL == 'N2S':
             action_removal_table = (
-                torch.tanh(self.compater_removal(h_hat, solution, selection_recent).squeeze())
+                torch.tanh(
+                    self.compater_removal(h_hat, solution, selection_recent).squeeze()
+                )
                 * self.range
             )
             if pre_action is not None and pre_action[0, 0] > 0:
@@ -469,7 +472,11 @@ class N2SDecoder(nn.Module):
                 1, solution.long().unsqueeze(-1).expand(batch_size, graph_size, 2)
             )
             d_i_pre = x_in.gather(
-                1, solution.argsort().long().unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1,
+                solution.argsort()
+                .long()
+                .unsqueeze(-1)
+                .expand(batch_size, graph_size, 2),
             )
             cost_ = (
                 (d_i_pre - d_i).norm(p=2, dim=2)
@@ -514,7 +521,9 @@ class N2SDecoder(nn.Module):
         )
         if TYPE_REINSERTION == 'N2S':
             action_reinsertion_table = (
-                torch.tanh(self.compater_reinsertion(h_hat, pos_pickup, pos_delivery, solution))
+                torch.tanh(
+                    self.compater_reinsertion(h_hat, pos_pickup, pos_delivery, solution)
+                )
                 * self.range
             )
         elif TYPE_REINSERTION == 'random':

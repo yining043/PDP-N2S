@@ -148,7 +148,6 @@ class PPO(Agent):
         problem: PDP,
         val_m: int,
         batch: Dict[str, torch.Tensor],
-        do_sample: bool = False,
         show_bar: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch = move_to(batch, self.opts.device)  # batch_size, graph_size, 2
@@ -207,12 +206,7 @@ class PPO(Agent):
 
             # pass through model
             exchange = self.actor(
-                problem,
-                batch_feature,
-                solutions,
-                exchange,
-                action_record,
-                do_sample=do_sample,
+                problem, batch_feature, solutions, exchange, action_record
             )[0]
 
             # new solution
@@ -458,12 +452,7 @@ def train_batch(
 
             # get model output
             exchange = agent.actor(
-                problem,
-                batch_feature,
-                solution,
-                exchange,
-                action_record,
-                do_sample=True,
+                problem, batch_feature, solution, exchange, action_record
             )[0]
 
             # state transient
@@ -511,7 +500,6 @@ def train_batch(
                 solution,
                 exchange,
                 action_record,
-                do_sample=True,
                 require_entropy=True,  # take same action
                 to_critic=True,
             )  # type: ignore

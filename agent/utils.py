@@ -95,7 +95,7 @@ def validate(
         torch.manual_seed(opts.seed)
         np.random.seed(opts.seed)
         bv_, cost_hist_, best_hist_, r_ = agent.rollout(
-            problem, opts.val_m, batch, do_sample=True, show_bar=rank == 0
+            problem, opts.val_m, batch, show_bar=rank == 0
         )
         bv_list.append(bv_)
         cost_hist_list.append(cost_hist_)

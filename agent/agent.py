@@ -36,7 +36,6 @@ class Agent(metaclass=ABCMeta):
         problem: PDP,
         val_m: int,
         batch: Dict[str, torch.Tensor],
-        do_sample: bool = False,
         show_bar: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         pass

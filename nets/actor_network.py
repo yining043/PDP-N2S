@@ -113,7 +113,6 @@ class Actor(nn.Module):
         solution: torch.Tensor,
         exchange: torch.Tensor,
         action_record: List[torch.Tensor],
-        do_sample: bool = False,
         fixed_action: bool = None,
         require_entropy: bool = False,
         to_critic: bool = False,

@@ -1,4 +1,4 @@
-from typing import Type, Dict
+from typing import Type
 import os
 import json
 import torch
@@ -11,10 +11,11 @@ from options import get_options, Option
 from problems.problem_pdp import PDP
 from problems.problem_pdtsp import PDTSP
 from problems.problem_pdtspl import PDTSPL
+from agent.agent import Agent
 from agent.ppo import PPO
 
 
-def load_agent(name: str) -> Type[PPO]:
+def load_agent(name: str) -> Type[Agent]:
     agent = {
         'ppo': PPO,
     }.get(name, None)
@@ -23,7 +24,7 @@ def load_agent(name: str) -> Type[PPO]:
 
 
 def load_problem(name: str) -> Type[PDP]:
-    d: Dict[str, Type[PDP]] = {
+    d = {
         'pdtsp': PDTSP,
         'pdtspl': PDTSPL,
     }
@@ -70,7 +71,7 @@ def run(opts: Option) -> None:
     )
 
     # Figure out the RL algorithm
-    agent = load_agent(opts.RL_agent)(problem.NAME, problem.size, opts)
+    agent = load_agent(opts.RL_agent)(problem.name, problem.size, opts)
 
     # Load data from load_path
     assert (

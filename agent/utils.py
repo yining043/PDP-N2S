@@ -38,7 +38,7 @@ def validate(
     opts = agent.opts
     agent.eval()
 
-    val_dataset = problem.make_dataset(
+    val_dataset = PDP.make_dataset(
         size=opts.graph_size, num_samples=opts.val_size, filename=val_dataset_str
     )
 

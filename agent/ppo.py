@@ -181,7 +181,7 @@ class PPO(Agent):
 
         batch['coordinates'] = batch['coordinates'].view(-1, gs, dim)
         solutions = move_to(
-            problem.get_initial_solutions(batch, val_m), self.opts.device
+            problem.get_initial_solutions(batch), self.opts.device
         ).long()
 
         obj = problem.get_costs(batch, solutions)
@@ -189,7 +189,7 @@ class PPO(Agent):
         obj_history = [torch.cat((obj[:, None], obj[:, None]), -1)]
         reward = []
 
-        batch_feature = problem.input_feature_encoding(batch)
+        batch_feature = PDP.input_feature_encoding(batch)
 
         exchange = None
         action_record = [
@@ -324,7 +324,7 @@ def train(
                 flush=True,
             )
         # prepare training data
-        training_dataset = problem.make_dataset(
+        training_dataset = PDP.make_dataset(
             size=opts.graph_size, num_samples=opts.epoch_size
         )
         if opts.distributed:
@@ -419,9 +419,9 @@ def train_batch(
         move_to_cuda(batch, rank) if opts.distributed else move_to(batch, opts.device)
     )  # batch_size, graph_size, 2
     batch_feature = (
-        problem.input_feature_encoding(batch).cuda()
+        PDP.input_feature_encoding(batch).cuda()
         if opts.distributed
-        else move_to(problem.input_feature_encoding(batch), opts.device)
+        else move_to(PDP.input_feature_encoding(batch), opts.device)
     )
     batch_size = batch_feature.size(0)
     exchange = (

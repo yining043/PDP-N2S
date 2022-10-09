@@ -1,5 +1,5 @@
 from typing import Dict, Tuple
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 import torch
 from tensorboard_logger import Logger as TbLogger
 
@@ -16,21 +16,27 @@ class Agent(metaclass=ABCMeta):
     optimizer: torch.optim.Optimizer
     lr_scheduler: torch.optim.lr_scheduler.ExponentialLR
 
+    @abstractmethod
     def __init__(self, problem_name: str, size: int, opts: Option) -> None:
         pass
 
+    @abstractmethod
     def load(self, load_path: str) -> None:
         pass
 
+    @abstractmethod
     def save(self, epoch: int) -> None:
         pass
 
+    @abstractmethod
     def eval(self) -> None:
         pass
 
+    @abstractmethod
     def train(self) -> None:
         pass
 
+    @abstractmethod
     def rollout(
         self,
         problem: PDP,
@@ -40,11 +46,13 @@ class Agent(metaclass=ABCMeta):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         pass
 
+    @abstractmethod
     def start_inference(
         self, problem: PDP, val_dataset: str, tb_logger: TbLogger
     ) -> None:
         pass
 
+    @abstractmethod
     def start_training(
         self, problem: PDP, val_dataset: str, tb_logger: TbLogger
     ) -> None:

@@ -142,7 +142,7 @@ class Actor(nn.Module):
         if only_critic:
             return h_wave
 
-        visited_order_map = problem.get_visited_order_map(visit_index)
+        visited_order_map = PDP.get_visited_order_map(visit_index)
         del visit_index
 
         # pass through decoder

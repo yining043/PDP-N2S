@@ -1,12 +1,12 @@
 from typing import Dict, Iterable, List, Optional, Tuple
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 import os
 import pickle
 import torch
 from torch.utils.data import Dataset
 
 
-class PDP(metaclass=ABCMeta):
+class PDP(ABC):
 
     name: str
 
@@ -76,9 +76,9 @@ class PDP(metaclass=ABCMeta):
     def get_initial_solutions(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         pass
 
+    @staticmethod
     @abstractmethod
     def get_swap_mask(
-        self,
         selected_node: torch.Tensor,
         visited_order_map: torch.Tensor,
         top2: torch.Tensor,

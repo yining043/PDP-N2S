@@ -1,5 +1,5 @@
 from typing import Dict, Tuple
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 import torch
 from tensorboard_logger import Logger as TbLogger
 
@@ -9,7 +9,7 @@ from options import Option
 from problems.problem_pdp import PDP
 
 
-class Agent(metaclass=ABCMeta):
+class Agent(ABC):
     opts: Option
     actor: Actor
     critic: Critic

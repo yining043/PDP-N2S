@@ -127,8 +127,8 @@ class PDTSPL(PDP):
 
         return get_solution(self.init_val_met).expand(batch_size, self.size + 1).clone()
 
+    @staticmethod
     def get_swap_mask(
-        self,
         selected_node: torch.Tensor,
         visited_order_map: torch.Tensor,
         top2: torch.Tensor,

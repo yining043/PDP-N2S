@@ -6,17 +6,41 @@ from .problem_pdp import PDP
 
 class PDTSPL(PDP):
     def __init__(
-        self, p_size: int, init_val_met: str = 'p2d', with_assert: bool = False
+        self, size: int, init_val_method: str, check_feasible: bool = False
     ) -> None:
-        super().__init__(p_size, init_val_met, with_assert)
+        super().__init__(size, init_val_method, check_feasible)
 
         self.name = 'pdtspl'  # Pickup and Delivery TSP with LIFO constriant
 
         print(
             f'PDTSP-LIFO with {self.size} nodes.',
             ' Do assert:',
-            with_assert,
+            check_feasible,
         )
+
+    @staticmethod
+    def get_swap_mask(
+        selected_node: torch.Tensor,
+        visit_index: torch.Tensor,
+        top2: torch.Tensor,
+    ) -> torch.Tensor:
+        visited_order_map = PDP._get_visit_order_map(visit_index)
+        batch_size, graph_size_plus1, _ = visited_order_map.size()
+
+        top = torch.where(top2[:, :, 0] == selected_node, top2[:, :, 1], top2[:, :, 0])
+        mask_pd = top.view(-1, graph_size_plus1, 1) != top.view(-1, 1, graph_size_plus1)
+
+        mask = visited_order_map.clone()  # true means unavailable
+        mask[torch.arange(batch_size), selected_node.view(-1)] = True
+        mask[
+            torch.arange(batch_size), selected_node.view(-1) + graph_size_plus1 // 2
+        ] = True
+        mask[torch.arange(batch_size), :, selected_node.view(-1)] = True
+        mask[
+            torch.arange(batch_size), :, selected_node.view(-1) + graph_size_plus1 // 2
+        ] = True
+
+        return mask | mask_pd
 
     def get_initial_solutions(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
 
@@ -25,12 +49,11 @@ class PDTSPL(PDP):
         def get_solution(methods: str) -> torch.Tensor:
 
             half_size = self.size // 2
-            p_size = self.size
 
             if methods == 'random':
                 candidates = torch.ones(batch_size, self.size + 1).bool()
                 candidates[:, half_size + 1 :] = 0
-                rec = torch.zeros(batch_size, self.size + 1).long()
+                solution = torch.zeros(batch_size, self.size + 1).long()
                 selected_node = torch.zeros(batch_size, 1).long()
                 candidates.scatter_(1, selected_node, 0)
                 stacks = (
@@ -57,17 +80,17 @@ class PDTSPL(PDP):
                             index2.view(-1), next_selected_node[index2] - half_size
                         ] = -0.01
 
-                    rec.scatter_(1, selected_node, next_selected_node)
+                    solution.scatter_(1, selected_node, next_selected_node)
                     candidates.scatter_(1, next_selected_node, 0)
                     selected_node = next_selected_node
 
-                return rec
+                return solution
 
             elif methods == 'greedy':
 
                 candidates = torch.ones(batch_size, self.size + 1).bool()
                 candidates[:, half_size + 1 :] = 0
-                rec = torch.zeros(batch_size, self.size + 1).long()
+                solution = torch.zeros(batch_size, self.size + 1).long()
                 selected_node = torch.zeros(batch_size, 1).long()
                 candidates.scatter_(1, selected_node, 0)
                 stacks = torch.zeros(batch_size, half_size + 1) - 0.01
@@ -96,7 +119,7 @@ class PDTSPL(PDP):
                     dists.scatter_(1, selected_node, 1e6)
                     dists[~candidates] = 1e6
 
-                    dists[:, p_size // 2 + 1 :] += 1e3  # mask all delivery
+                    dists[:, self.size // 2 + 1 :] += 1e3  # mask all delivery
                     dists[top > 0, top[top > 0] + half_size] -= 1e3
 
                     next_selected_node = dists.min(-1)[1].view(-1, 1)
@@ -116,77 +139,64 @@ class PDTSPL(PDP):
                         1, pairing, 1
                     )
 
-                    rec.scatter_(1, selected_node, next_selected_node)
+                    solution.scatter_(1, selected_node, next_selected_node)
                     candidates.scatter_(1, next_selected_node, 0)
                     selected_node = next_selected_node
 
-                return rec
+                return solution
 
             else:
                 raise NotImplementedError()
 
-        return get_solution(self.init_val_met).expand(batch_size, self.size + 1).clone()
+        return (
+            get_solution(self.init_val_method).expand(batch_size, self.size + 1).clone()
+        )
 
-    @staticmethod
-    def get_swap_mask(
-        selected_node: torch.Tensor,
-        visited_order_map: torch.Tensor,
-        top2: torch.Tensor,
-    ) -> torch.Tensor:
+    def _check_feasibility(self, solution: torch.Tensor) -> None:
 
-        bs, gs, _ = visited_order_map.size()
-
-        top = torch.where(top2[:, :, 0] == selected_node, top2[:, :, 1], top2[:, :, 0])
-        mask_pd = top.view(-1, gs, 1) != top.view(-1, 1, gs)
-
-        mask = visited_order_map.clone()
-        mask[torch.arange(bs), selected_node.view(-1)] = True
-        mask[torch.arange(bs), selected_node.view(-1) + gs // 2] = True
-        mask[torch.arange(bs), :, selected_node.view(-1)] = True
-        mask[torch.arange(bs), :, selected_node.view(-1) + gs // 2] = True
-
-        return mask | mask_pd
-
-    def _check_feasibility(self, rec: torch.Tensor) -> None:
-
-        p_size = self.size + 1
+        size_p1 = self.size + 1
 
         assert (
-            (torch.arange(p_size, out=rec.new())).view(1, -1).expand_as(rec)
-            == rec.sort(1)[0]
+            (torch.arange(size_p1, out=solution.new())).view(1, -1).expand_as(solution)
+            == solution.sort(1)[0]
         ).all(), (
             (
-                (torch.arange(p_size, out=rec.new())).view(1, -1).expand_as(rec)
-                == rec.sort(1)[0]
+                (torch.arange(size_p1, out=solution.new()))
+                .view(1, -1)
+                .expand_as(solution)
+                == solution.sort(1)[0]
             ),
             "not visiting all nodes",
-            rec,
+            solution,
         )
 
         # calculate visited time
-        bs = rec.size(0)
-        visited_time = torch.zeros((bs, p_size), device=rec.device)
-        stacks = torch.zeros((bs, p_size // 2), device=rec.device).long() - 0.01
+        batch_size = solution.size(0)
+        visited_time = torch.zeros((batch_size, size_p1), device=solution.device)
+        stacks = (
+            torch.zeros((batch_size, size_p1 // 2), device=solution.device).long()
+            - 0.01
+        )
         stacks[:, 0] = 0  # fix bug: max is not stable sorting
-        pre = torch.zeros((bs), device=rec.device).long()
-        arange = torch.arange(bs)
-        for i in range(p_size):
-            cur = rec[arange, pre]
+        pre = torch.zeros(batch_size, device=solution.device).long()
+        arange = torch.arange(batch_size)
+        for i in range(size_p1):
+            cur = solution[arange, pre]
             visited_time[arange, cur] = i + 1
             pre = cur
-            index1 = (cur <= p_size // 2) & (cur > 0)
-            index2 = (cur > p_size // 2) & (cur > 0)
+            index1 = (cur <= size_p1 // 2) & (cur > 0)
+            index2 = (cur > size_p1 // 2) & (cur > 0)
             if index1.any():
                 stacks[index1, cur[index1] - 1] = i + 1
             assert (
-                stacks.max(-1)[1][index2] == (cur[index2] - 1 - p_size // 2)
+                stacks.max(-1)[1][index2] == (cur[index2] - 1 - size_p1 // 2)
             ).all(), 'pdtsp error'
             if (index2).any():
-                stacks[index2, cur[index2] - 1 - p_size // 2] = -0.01
+                stacks[index2, cur[index2] - 1 - size_p1 // 2] = -0.01
 
         assert (
-            visited_time[:, 1 : p_size // 2 + 1] < visited_time[:, p_size // 2 + 1 :]
+            visited_time[:, 1 : size_p1 // 2 + 1] < visited_time[:, size_p1 // 2 + 1 :]
         ).all(), (
-            visited_time[:, 1 : p_size // 2 + 1] < visited_time[:, p_size + 1 // 2 :],
+            visited_time[:, 1 : size_p1 // 2 + 1] < visited_time[:, size_p1 + 1 // 2 :],
             "deliverying without pick-up",
         )

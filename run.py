@@ -65,9 +65,9 @@ def run(opts: Option) -> None:
 
     # Figure out what's the problem
     problem = load_problem(opts.problem)(
-        p_size=opts.graph_size,
-        init_val_met=opts.init_val_met,
-        with_assert=opts.use_assert,
+        size=opts.graph_size,
+        init_val_method=opts.init_val_method,
+        check_feasible=opts.use_assert,
     )
 
     # Figure out the RL algorithm

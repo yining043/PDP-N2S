@@ -9,7 +9,7 @@ class Option(argparse.Namespace):
     # overall settings
     problem: str
     graph_size: int
-    init_val_met: str
+    init_val_method: str
     no_cuda: bool
     no_tb: bool
     show_figs: bool
@@ -89,7 +89,7 @@ def get_options(args: Optional[List[str]] = None) -> Option:
         help="T number of customers in the targeted problem (graph size)",
     )
     parser.add_argument(
-        '--init_val_met',
+        '--init_val_method',
         choices=['greedy', 'random'],
         default='random',
         help='method to generate initial solutions for inference',

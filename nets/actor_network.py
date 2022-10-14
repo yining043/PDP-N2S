@@ -129,7 +129,7 @@ class Actor(nn.Module):
     ]:
 
         # the embedded input x
-        # batch_size, graph_size, node_dim = x_in.size()
+        # batch_size, graph_size+1, node_dim = x_in.size()
 
         h_fea, g_pos, visit_index, top2 = self.embedder(
             x_in, solution, self.clac_stacks
@@ -142,9 +142,6 @@ class Actor(nn.Module):
         if only_critic:
             return h_wave
 
-        visited_order_map = PDP.get_visited_order_map(visit_index)
-        del visit_index
-
         # pass through decoder
         action, log_ll, entropy = self.decoder(
             problem=problem,
@@ -152,7 +149,7 @@ class Actor(nn.Module):
             solution=solution,
             x_in=x_in,
             top2=top2,
-            visited_order_map=visited_order_map,
+            visit_index=visit_index,
             pre_action=exchange,
             selection_recent=Actor.get_action_recent(action_record).to(x_in.device),
             fixed_action=fixed_action,

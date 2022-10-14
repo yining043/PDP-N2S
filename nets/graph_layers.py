@@ -161,19 +161,19 @@ class CriticDecoder(nn.Module):
 
     def forward(self, h_wave: torch.Tensor, best_cost: torch.Tensor) -> torch.Tensor:
 
-        # h: (batch_size, graph_size, input_size)
+        # h_wave: (batch_size, graph_size+1, input_size)
         mean_pooling = h_wave.mean(1)  # mean Pooling (batch_size, input_size)
         graph_feature: torch.Tensor = self.project_graph(mean_pooling)[
             :, None, :
         ]  # (batch_size, 1, input_dim/2)
         node_feature: torch.Tensor = self.project_node(
             h_wave
-        )  # (batch_size, graph_size, input_dim/2)
+        )  # (batch_size, graph_size+1, input_dim/2)
 
         # pass through value_head, get estimated value
         fusion = node_feature + graph_feature.expand_as(
             node_feature
-        )  # (batch_size, graph_size, input_dim/2)
+        )  # (batch_size, graph_size+1, input_dim/2)
 
         fusion_feature = torch.cat(
             (
@@ -252,27 +252,27 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
     def forward(
         self,
         h_hat: torch.Tensor,  # hidden state from encoder
-        solution: torch.Tensor,  # if solution=[2,0,1], means 0-2-1-0.
+        solution: torch.Tensor,  # if solution=[2,0,1], means 0->2->1->0.
         selection_recent: torch.Tensor,  # (batch_size, 4, graph_size/2)
     ) -> torch.Tensor:
 
         pre = solution.argsort()  # pre=[1,2,0]
         post = solution.gather(1, solution)  # post=[1,2,0]
-        batch_size, graph_size, input_dim = h_hat.size()
+        batch_size, graph_size_plus1, input_dim = h_hat.size()
 
         hflat = h_hat.contiguous().view(-1, input_dim)  #################   reshape
 
-        shp = (self.n_heads, batch_size, graph_size, self.hidden_dim)
+        shp = (self.n_heads, batch_size, graph_size_plus1, self.hidden_dim)
 
-        # Calculate queries, (n_heads, batch_size, graph_size, key/val_size)
+        # Calculate queries, (n_heads, batch_size, graph_size+1, key_size)
         hidden_Q = torch.matmul(hflat, self.W_Q).view(shp)
         hidden_K = torch.matmul(hflat, self.W_K).view(shp)
 
         Q_pre = hidden_Q.gather(
-            2, pre.view(1, batch_size, graph_size, 1).expand_as(hidden_Q)
+            2, pre.view(1, batch_size, graph_size_plus1, 1).expand_as(hidden_Q)
         )
         K_post = hidden_K.gather(
-            2, post.view(1, batch_size, graph_size, 1).expand_as(hidden_Q)
+            2, post.view(1, batch_size, graph_size_plus1, 1).expand_as(hidden_Q)
         )
 
         compatibility = (
@@ -285,8 +285,8 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
 
         compatibility_pairing = torch.cat(
             (
-                compatibility[:, :, : graph_size // 2],
-                compatibility[:, :, graph_size // 2 :],
+                compatibility[:, :, : graph_size_plus1 // 2],
+                compatibility[:, :, graph_size_plus1 // 2 :],
             ),
             0,
         )  # (n_heads*2, batch_size, graph_size/2)
@@ -333,11 +333,11 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
         h_hat: torch.Tensor,
         pos_pickup: torch.Tensor,  # (batch_size)
         pos_delivery: torch.Tensor,  # (batch_size)
-        solution: torch.Tensor,  # (batch, graph_size)
+        solution: torch.Tensor,  # (batch, graph_size+1)
     ) -> torch.Tensor:
 
-        batch_size, graph_size, input_dim = h_hat.size()
-        shp = (batch_size, graph_size, graph_size, self.n_heads)
+        batch_size, graph_size_plus1, input_dim = h_hat.size()
+        shp = (batch_size, graph_size_plus1, graph_size_plus1, self.n_heads)
         shp_p = (batch_size, -1, 1, self.n_heads)
         shp_d = (batch_size, 1, -1, self.n_heads)
 
@@ -347,16 +347,16 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
             1
         )  # (batch_size, 1, input_dim)
         h_K_neibour = h_hat.gather(
-            1, solution.view(batch_size, graph_size, 1).expand_as(h_hat)
-        )  # (batch_size, graph_size, input_dim)
+            1, solution.view(batch_size, graph_size_plus1, 1).expand_as(h_hat)
+        )  # (batch_size, graph_size+1, input_dim)
 
         compatibility_pickup_pre = (
             self.compater_insert1(
                 h_pickup, h_hat
-            )  # (n_heads, batch_size, 1, graph_size)
-            .permute(1, 2, 3, 0)  # (batch_size, 1, graph_size, n_heads)
-            .view(shp_p)  # (batch_size, graph_size, 1, n_heads)
-            .expand(shp)  # (batch_size, graph_size, graph_size, n_heads)
+            )  # (n_heads, batch_size, 1, graph_size+1)
+            .permute(1, 2, 3, 0)  # (batch_size, 1, graph_size+1, n_heads)
+            .view(shp_p)  # (batch_size, graph_size+1, 1, n_heads)
+            .expand(shp)  # (batch_size, graph_size+1, graph_size+1, n_heads)
         )
         compatibility_pickup_post = (
             self.compater_insert2(h_pickup, h_K_neibour)
@@ -367,10 +367,10 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
         compatibility_delivery_pre = (
             self.compater_insert1(
                 h_delivery, h_hat
-            )  # (n_heads, batch_size, 1, graph_size)
-            .permute(1, 2, 3, 0)  # (batch_size, 1, graph_size, n_heads)
-            .view(shp_d)  # (batch_size, 1, graph_size, n_heads)
-            .expand(shp)  # (batch_size, graph_size, graph_size, n_heads)
+            )  # (n_heads, batch_size, 1, graph_size+1)
+            .permute(1, 2, 3, 0)  # (batch_size, 1, graph_size+1, n_heads)
+            .view(shp_d)  # (batch_size, 1, graph_size+1, n_heads)
+            .expand(shp)  # (batch_size, graph_size+1, graph_size+1, n_heads)
         )
         compatibility_delivery_post = (
             self.compater_insert2(h_delivery, h_K_neibour)
@@ -390,7 +390,7 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
                 -1,
             )
         ).squeeze()
-        return compatibility  # (batch_size, graph_size, graph_size)
+        return compatibility  # (batch_size, graph_size+1, graph_size+1)
 
 
 class N2SDecoder(nn.Module):
@@ -423,22 +423,22 @@ class N2SDecoder(nn.Module):
         solution: torch.Tensor,
         x_in: torch.Tensor,
         top2: torch.Tensor,
-        visited_order_map: torch.Tensor,
+        visit_index: torch.Tensor,
         pre_action: torch.Tensor,
         selection_recent: torch.Tensor,
         fixed_action: Optional[torch.Tensor] = None,
         require_entropy: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
 
-        batch_size, graph_size, input_dim = h_wave.size()
-        half_pos = (graph_size - 1) // 2
+        batch_size, graph_size_plus1, input_dim = h_wave.size()
+        half_pos = (graph_size_plus1 - 1) // 2
 
         arange = torch.arange(batch_size)
 
         h_hat: torch.Tensor = self.project_node(h_wave) + self.project_graph(
             h_wave.max(1)[0]
         )[:, None, :].expand(
-            batch_size, graph_size, input_dim
+            batch_size, graph_size_plus1, input_dim
         )  # (11)
 
         ############# action1 removal
@@ -456,35 +456,39 @@ class N2SDecoder(nn.Module):
             )  # log-likelihood
             probs_removal = F.softmax(action_removal_table, dim=-1)
         elif TYPE_REMOVAL == 'random':
-            probs_removal = torch.rand(batch_size, graph_size // 2).to(h_wave.device)
+            probs_removal = torch.rand(batch_size, graph_size_plus1 // 2).to(
+                h_wave.device
+            )
         elif TYPE_REMOVAL == 'greedy':
             # epi-greedy
             first_row = (
-                torch.arange(graph_size, device=solution.device)
+                torch.arange(graph_size_plus1, device=solution.device)
                 .long()
                 .unsqueeze(0)
-                .expand(batch_size, graph_size)
+                .expand(batch_size, graph_size_plus1)
             )
             d_i = x_in.gather(
-                1, first_row.unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1, first_row.unsqueeze(-1).expand(batch_size, graph_size_plus1, 2)
             )
             d_i_next = x_in.gather(
-                1, solution.long().unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1, solution.long().unsqueeze(-1).expand(batch_size, graph_size_plus1, 2)
             )
             d_i_pre = x_in.gather(
                 1,
                 solution.argsort()
                 .long()
                 .unsqueeze(-1)
-                .expand(batch_size, graph_size, 2),
+                .expand(batch_size, graph_size_plus1, 2),
             )
             cost_ = (
                 (d_i_pre - d_i).norm(p=2, dim=2)
                 + (d_i - d_i_next).norm(p=2, dim=2)
                 - (d_i_pre - d_i_next).norm(p=2, dim=2)
             )[:, 1:]
-            probs_removal = cost_[:, : graph_size // 2] + cost_[:, graph_size // 2 :]
-            probs_removal_random = torch.rand(batch_size, graph_size // 2).to(
+            probs_removal = (
+                cost_[:, : graph_size_plus1 // 2] + cost_[:, graph_size_plus1 // 2 :]
+            )
+            probs_removal_random = torch.rand(batch_size, graph_size_plus1 // 2).to(
                 h_wave.device
             )
         else:
@@ -515,8 +519,8 @@ class N2SDecoder(nn.Module):
         pos_pickup = (1 + action_removal).view(-1)
         pos_delivery = pos_pickup + half_pos
         mask_table = (
-            problem.get_swap_mask(action_removal + 1, visited_order_map, top2)
-            .expand(batch_size, graph_size, graph_size)
+            problem.get_swap_mask(action_removal + 1, visit_index, top2)
+            .expand(batch_size, graph_size_plus1, graph_size_plus1)
             .cpu()
         )
         if TYPE_REINSERTION == 'N2S':
@@ -528,7 +532,7 @@ class N2SDecoder(nn.Module):
             )
         elif TYPE_REINSERTION == 'random':
             action_reinsertion_table = torch.ones(
-                batch_size, graph_size, graph_size
+                batch_size, graph_size_plus1, graph_size_plus1
             ).to(h_wave.device)
         elif TYPE_REMOVAL == 'greedy':
             # epi-greedy
@@ -546,22 +550,22 @@ class N2SDecoder(nn.Module):
             rec_new.scatter_(1, pre_pairsecond, post_pairsecond)
             # perform calc on new rec_new
             first_row = (
-                torch.arange(graph_size, device=solution.device)
+                torch.arange(graph_size_plus1, device=solution.device)
                 .long()
                 .unsqueeze(0)
-                .expand(batch_size, graph_size)
+                .expand(batch_size, graph_size_plus1)
             )
             d_i = x_in.gather(
-                1, first_row.unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1, first_row.unsqueeze(-1).expand(batch_size, graph_size_plus1, 2)
             )
             d_i_next = x_in.gather(
-                1, rec_new.long().unsqueeze(-1).expand(batch_size, graph_size, 2)
+                1, rec_new.long().unsqueeze(-1).expand(batch_size, graph_size_plus1, 2)
             )
             d_pick = x_in.gather(
-                1, pos_pickup.unsqueeze(1).expand(batch_size, graph_size, 2)
+                1, pos_pickup.unsqueeze(1).expand(batch_size, graph_size_plus1, 2)
             )
             d_deli = x_in.gather(
-                1, pos_delivery.unsqueeze(1).expand(batch_size, graph_size, 2)
+                1, pos_delivery.unsqueeze(1).expand(batch_size, graph_size_plus1, 2)
             )
             cost_insert_p = (
                 (d_pick - d_i).norm(p=2, dim=2)
@@ -574,11 +578,11 @@ class N2SDecoder(nn.Module):
                 - (d_i - d_i_next).norm(p=2, dim=2)
             )
             action_reinsertion_table = -(
-                cost_insert_p.view(batch_size, graph_size, 1)
-                + cost_insert_d.view(batch_size, 1, graph_size)
+                cost_insert_p.view(batch_size, graph_size_plus1, 1)
+                + cost_insert_d.view(batch_size, 1, graph_size_plus1)
             )
             action_reinsertion_table_random = torch.ones(
-                batch_size, graph_size, graph_size
+                batch_size, graph_size_plus1, graph_size_plus1
             ).to(h_wave.device)
             action_reinsertion_table_random[mask_table] = -1e20
             action_reinsertion_table_random = action_reinsertion_table_random.view(
@@ -592,7 +596,7 @@ class N2SDecoder(nn.Module):
 
         action_reinsertion_table[mask_table] = -1e20
 
-        del visited_order_map, mask_table
+        del visit_index, mask_table
         # reshape action_reinsertion_table
         action_reinsertion_table = action_reinsertion_table.view(batch_size, -1)
         log_ll_reinsertion = (
@@ -605,7 +609,7 @@ class N2SDecoder(nn.Module):
         if fixed_action is not None:
             p_selected = fixed_action[:, 1]
             d_selected = fixed_action[:, 2]
-            pair_index = p_selected * graph_size + d_selected
+            pair_index = p_selected * graph_size_plus1 + d_selected
             pair_index = pair_index.view(-1, 1)
             action = fixed_action
         else:
@@ -623,8 +627,8 @@ class N2SDecoder(nn.Module):
             else:
                 assert False
 
-            p_selected = pair_index // graph_size
-            d_selected = pair_index % graph_size
+            p_selected = pair_index // graph_size_plus1
+            d_selected = pair_index % graph_size_plus1
             action = torch.cat(
                 (action_removal.view(batch_size, -1), p_selected, d_selected), -1
             )  # batch_size, 3
@@ -967,7 +971,7 @@ class EmbeddingNet(nn.Module):
 
         return (
             torch.gather(position_emb_new, 1, index),
-            visit_index.long(),
+            (visit_index % seq_length).long(),
             top2 if clac_stacks else None,
         )
 

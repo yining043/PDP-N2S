@@ -12,96 +12,97 @@ class PDP(ABC):
 
     @abstractmethod
     def __init__(
-        self, p_size: int, init_val_met: str = 'p2d', with_assert: bool = False
+        self, size: int, init_val_method: str, check_feasible: bool = False
     ) -> None:
-        self.size = p_size  # the number of nodes in PDTSP
-        self.do_assert = with_assert
-        self.init_val_met = init_val_met
+        self.size = size  # the number of nodes in PDTSP
+        self.check_feasible = check_feasible
+        self.init_val_method = init_val_method
         self.state = 'eval'
+
+    @staticmethod
+    @abstractmethod
+    def get_swap_mask(
+        selected_node: torch.Tensor,
+        visit_index: torch.Tensor,
+        top2: torch.Tensor,
+    ) -> torch.Tensor:
+        pass
+
+    @abstractmethod
+    def get_initial_solutions(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+        pass
+
+    @abstractmethod
+    def _check_feasibility(self, solution: torch.Tensor) -> None:
+        pass
 
     @staticmethod
     def input_feature_encoding(batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         return batch['coordinates']
 
     @staticmethod
-    def get_visited_order_map(visit_index: torch.Tensor) -> torch.Tensor:
-        batch_size, graph_size = visit_index.size()
-        visit_index = visit_index % graph_size
-
-        return visit_index.view(batch_size, graph_size, 1) > visit_index.view(
-            batch_size, 1, graph_size
-        )
+    def _get_visit_order_map(visit_index: torch.Tensor) -> torch.Tensor:
+        batch_size, graph_size_plus1 = visit_index.size()
+        return visit_index.view(batch_size, graph_size_plus1, 1) > visit_index.view(
+            batch_size, 1, graph_size_plus1
+        )  # row late than column: true
 
     @staticmethod
     def _insert_star(
-        solution: torch.Tensor,
-        pair_index: torch.Tensor,
-        first: torch.Tensor,
-        second: torch.Tensor,
+        solution: torch.Tensor,  # (batch_size, graph_size+1)
+        pair_first: torch.Tensor,  # (batch_size, 1)
+        first: torch.Tensor,  # (batch_size, 1)
+        second: torch.Tensor,  # (batch_size, 1)
     ) -> torch.Tensor:
 
-        rec = solution.clone()
-        bs, gs = rec.size()
+        solution = solution.clone()  # if solution=[2,0,1], means 0->2->1->0.
+        graph_size_plus1 = solution.size(1)
 
-        # fix connection for pairing node
-        argsort = rec.argsort()
-        pre_pairfirst = argsort.gather(1, pair_index)
-        post_pairfirst = rec.gather(1, pair_index)
-        rec.scatter_(1, pre_pairfirst, post_pairfirst)
-        rec.scatter_(1, pair_index, pair_index)
+        # remove pair node
+        pre = solution.argsort()  # pre=[1,2,0]
+        pre_pair_first = pre.gather(1, pair_first)  # (batch_size, 1)
+        post_pair_first = solution.gather(1, pair_first)  # (batch_size, 1)
 
-        argsort = rec.argsort()
+        solution.scatter_(1, pre_pair_first, post_pair_first)  # remove pair first
+        solution.scatter_(1, pair_first, pair_first)  # let: pair first -> pair first
 
-        pre_pairsecond = argsort.gather(1, pair_index + gs // 2)
-        post_pairsecond = rec.gather(1, pair_index + gs // 2)
+        pre = solution.argsort()
 
-        rec.scatter_(1, pre_pairsecond, post_pairsecond)
+        pre_pair_second = pre.gather(1, pair_first + graph_size_plus1 // 2)
+        post_pair_second = solution.gather(1, pair_first + graph_size_plus1 // 2)
 
-        # fix connection for pairing node
-        post_second = rec.gather(1, second)
-        rec.scatter_(1, second, pair_index + gs // 2)
-        rec.scatter_(1, pair_index + gs // 2, post_second)
+        solution.scatter_(1, pre_pair_second, post_pair_second)  # remove pair second
 
-        post_first = rec.gather(1, first)
-        rec.scatter_(1, first, pair_index)
-        rec.scatter_(1, pair_index, post_first)
+        # insert pair node
+        post_second = solution.gather(1, second)
+        solution.scatter_(
+            1, second, pair_first + graph_size_plus1 // 2
+        )  # second -> pair_second
+        solution.scatter_(1, pair_first + graph_size_plus1 // 2, post_second)
 
-        return rec
+        post_first = solution.gather(1, first)
+        solution.scatter_(1, first, pair_first)  # first -> pair_first
+        solution.scatter_(1, pair_first, post_first)
+
+        return solution
 
     @staticmethod
     def make_dataset(*args, **kwargs) -> 'PDPDataset':
         return PDPDataset(*args, **kwargs)
 
-    @abstractmethod
-    def get_initial_solutions(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def get_swap_mask(
-        selected_node: torch.Tensor,
-        visited_order_map: torch.Tensor,
-        top2: torch.Tensor,
-    ) -> torch.Tensor:
-        pass
-
-    @abstractmethod
-    def _check_feasibility(self, rec: torch.Tensor) -> None:
-        pass
-
     def get_costs(
-        self, batch: Dict[str, torch.Tensor], rec: torch.Tensor
+        self, batch: Dict[str, torch.Tensor], solution: torch.Tensor
     ) -> torch.Tensor:
 
-        batch_size, size = rec.size()
+        batch_size, graph_size_plus1 = solution.size()
 
         # check feasibility
-        if self.do_assert:
-            self._check_feasibility(rec)
+        if self.check_feasible:
+            self._check_feasibility(solution)
 
         # calculate obj value
         d1 = batch['coordinates'].gather(
-            1, rec.long().unsqueeze(-1).expand(batch_size, size, 2)
+            1, solution.long().unsqueeze(-1).expand(batch_size, graph_size_plus1, 2)
         )
         d2 = batch['coordinates']
         length = (d1 - d2).norm(p=2, dim=2).sum(1)
@@ -110,38 +111,40 @@ class PDP(ABC):
 
     def step(
         self,
-        batch: Dict[str, torch.Tensor],
-        rec: torch.Tensor,
-        exchange: torch.Tensor,
-        pre_bsf: torch.Tensor,
-        action_record: List[torch.Tensor],
+        batch: Dict[
+            str, torch.Tensor
+        ],  # ['coordinates']: (batch_size, graph_size+1, 2)
+        solution: torch.Tensor,  # (batch_size, graph_size+1)
+        exchange: torch.Tensor,  # (batch_size, 3)
+        pre_best_obj: torch.Tensor,  # (batch_size,)
+        action_record: List[torch.Tensor],  # graph_size * (batch_size, graph_size/2)
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor]]:
 
-        bs, gs = rec.size()
-        pre_bsf = pre_bsf.view(bs, -1)
+        batch_size = solution.size(0)
+        pre_best_obj = pre_best_obj.view(batch_size, -1)
 
         cur_vec = action_record.pop(0) * 0.0
-        cur_vec[torch.arange(bs), exchange[:, 0]] = 1.0
+        cur_vec[torch.arange(batch_size), exchange[:, 0]] = 1.0
         action_record.append(cur_vec)
 
-        selected = exchange[:, 0].view(bs, 1)
-        first = exchange[:, 1].view(bs, 1)
-        second = exchange[:, 2].view(bs, 1)
+        selected_minus1 = exchange[:, 0].view(batch_size, 1)
+        first = exchange[:, 1].view(batch_size, 1)
+        second = exchange[:, 2].view(batch_size, 1)
 
-        next_state = PDP._insert_star(rec, selected + 1, first, second)
+        next_state = PDP._insert_star(solution, selected_minus1 + 1, first, second)
 
         new_obj = self.get_costs(batch, next_state)
 
-        now_bsf = torch.min(
-            torch.cat((new_obj[:, None], pre_bsf[:, -1, None]), -1), -1
+        now_best_obj = torch.min(
+            torch.cat((new_obj[:, None], pre_best_obj[:, -1, None]), -1), -1
         )[0]
 
-        reward = pre_bsf[:, -1] - now_bsf
+        reward = pre_best_obj[:, -1] - now_best_obj  # (batch_size,)
 
         return (
             next_state,
             reward,
-            torch.cat((new_obj[:, None], now_bsf[:, None]), -1),
+            torch.cat((new_obj[:, None], now_best_obj[:, None]), -1),
             action_record,
         )
 
@@ -176,12 +179,11 @@ class PDPDataset(Dataset):
                     'loc': torch.FloatTensor(self.size, 2).uniform_(0, 1),
                     'depot': torch.FloatTensor(2).uniform_(0, 1),
                 }
-                for i in range(num_samples)
+                for _ in range(num_samples)
             ]
 
         self.N = len(self.data)
 
-        # calculate distance matrix
         for i, instance in enumerate(self.data):
             self.data[i]['coordinates'] = torch.cat(
                 (instance['depot'].reshape(1, 2), instance['loc']), dim=0

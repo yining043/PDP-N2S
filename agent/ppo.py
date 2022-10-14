@@ -150,8 +150,8 @@ class PPO(Agent):
         batch: Dict[str, torch.Tensor],
         show_bar: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        batch = move_to(batch, self.opts.device)  # batch_size, graph_size, 2
-        bs, gs, dim = batch['coordinates'].size()
+        batch = move_to(batch, self.opts.device)  # batch_size, graph_size+1, 2
+        batch_size, graph_size_plus1, dim = batch['coordinates'].size()
         batch['coordinates'] = batch['coordinates'].unsqueeze(1).repeat(1, val_m, 1, 1)
         augments = ['Rotate', 'Flip_x-y', 'Flip_x_cor', 'Flip_y_cor']
         if val_m > 1:
@@ -179,7 +179,7 @@ class PPO(Agent):
                                 1 - batch['coordinates'][:, i, :, 1]
                             )
 
-        batch['coordinates'] = batch['coordinates'].view(-1, gs, dim)
+        batch['coordinates'] = batch['coordinates'].view(-1, graph_size_plus1, dim)
         solutions = move_to(
             problem.get_initial_solutions(batch), self.opts.device
         ).long()
@@ -219,14 +219,16 @@ class PPO(Agent):
             obj_history.append(obj)
 
         out = (
-            obj[:, -1].reshape(bs, val_m).min(1)[0],  # batch_size, 1
+            obj[:, -1].reshape(batch_size, val_m).min(1)[0],  # batch_size, 1
             torch.stack(obj_history, 1)[:, :, 0]
-            .view(bs, val_m, -1)
+            .view(batch_size, val_m, -1)
             .min(1)[0],  # batch_size, T
             torch.stack(obj_history, 1)[:, :, -1]
-            .view(bs, val_m, -1)
+            .view(batch_size, val_m, -1)
             .min(1)[0],  # batch_size, T
-            torch.stack(reward, 1).view(bs, val_m, -1).max(1)[0],  # batch_size, T
+            torch.stack(reward, 1)
+            .view(batch_size, val_m, -1)
+            .max(1)[0],  # batch_size, T
         )
 
         return out
@@ -417,7 +419,7 @@ def train_batch(
     # prepare the input
     batch = (
         move_to_cuda(batch, rank) if opts.distributed else move_to(batch, opts.device)
-    )  # batch_size, graph_size, 2
+    )  # batch_size, graph_size+1, 2
     batch_feature = (
         PDP.input_feature_encoding(batch).cuda()
         if opts.distributed

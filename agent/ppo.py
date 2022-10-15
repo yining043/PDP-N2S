@@ -180,11 +180,11 @@ class PPO(Agent):
                             )
 
         batch['coordinates'] = batch['coordinates'].view(-1, graph_size_plus1, dim)
-        solutions = move_to(
+        solution = move_to(
             problem.get_initial_solutions(batch), self.opts.device
         ).long()
 
-        obj = problem.get_costs(batch, solutions)
+        obj = problem.get_costs(batch, solution)
 
         obj_history = [torch.cat((obj[:, None], obj[:, None]), -1)]
         reward = []
@@ -206,12 +206,12 @@ class PPO(Agent):
 
             # pass through model
             exchange = self.actor(
-                problem, batch_feature, solutions, exchange, action_record
+                problem, batch_feature, solution, exchange, action_record
             )[0]
 
             # new solution
-            solutions, rewards, obj, action_record = problem.step(
-                batch, solutions, exchange, obj, action_record
+            solution, rewards, obj, action_record = problem.step(
+                batch, solution, exchange, obj, action_record
             )
 
             # record informations

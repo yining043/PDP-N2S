@@ -919,37 +919,35 @@ class EmbeddingNet(nn.Module):
         return pattern  # (seq_length, embedding_dim)
 
     def _position_embedding(
-        self, solutions: torch.Tensor, embedding_dim: int, clac_stacks: bool = False
+        self, solution: torch.Tensor, embedding_dim: int, clac_stacks: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        batch_size, seq_length = solutions.size()
+        batch_size, seq_length = solution.size()
         half_size = seq_length // 2
 
         # expand for every batch
         position_emb_new = (
             self.pattern.expand(batch_size, seq_length, embedding_dim)
             .clone()
-            .to(solutions.device)
+            .to(solution.device)
         )
 
         # get index according to the solutions
-        visit_index = torch.zeros((batch_size, seq_length), device=solutions.device)
+        visit_index = torch.zeros((batch_size, seq_length), device=solution.device)
 
-        pre = torch.zeros((batch_size), device=solutions.device).long()
+        pre = torch.zeros((batch_size), device=solution.device).long()
 
         arange = torch.arange(batch_size)
         if clac_stacks:
             stacks = (
-                torch.zeros(batch_size, half_size + 1, device=solutions.device) - 0.01
+                torch.zeros(batch_size, half_size + 1, device=solution.device) - 0.01
             )  # fix bug: topk is not stable sorting
-            top2 = torch.zeros(
-                batch_size, seq_length, 2, device=solutions.device
-            ).long()
+            top2 = torch.zeros(batch_size, seq_length, 2, device=solution.device).long()
             stacks[arange, pre] = 0  # fix bug: topk is not stable sorting
 
         for i in range(seq_length):
-            current_nodes = solutions[arange, pre]  # (batch_size,)
+            current_nodes = solution[arange, pre]  # (batch_size,)
             visit_index[arange, current_nodes] = i + 1
-            pre = solutions[arange, pre]
+            pre = current_nodes
 
             if clac_stacks:
                 index1 = (current_nodes <= half_size) & (current_nodes > 0)
@@ -961,6 +959,9 @@ class EmbeddingNet(nn.Module):
                         index2, current_nodes[index2] - half_size
                     ] = -0.01  # fix bug: topk is not stable sorting
                 top2[arange, current_nodes] = stacks.topk(2)[1]
+                # stack top after visit
+                # node+, (current_stack_top, last_stack_top_or_0)
+                # node-, (current_stack_top, last_stack_top_or_0) or (0, 1_meaningless)
 
         index = (
             (visit_index % seq_length)
@@ -980,10 +981,10 @@ class EmbeddingNet(nn.Module):
     ]
 
     def forward(
-        self, x: torch.Tensor, solutions: torch.Tensor, clac_stacks: bool = False
+        self, x: torch.Tensor, solution: torch.Tensor, clac_stacks: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         pos_emb, visit_index, top2 = self._position_embedding(
-            solutions, self.embedding_dim, clac_stacks
+            solution, self.embedding_dim, clac_stacks
         )
         fea_emb = self.feature_embedder(x)
         return fea_emb, pos_emb, visit_index, top2

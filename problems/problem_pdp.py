@@ -54,9 +54,15 @@ class PDP(ABC):
         first: torch.Tensor,  # (batch_size, 1)
         second: torch.Tensor,  # (batch_size, 1)
     ) -> torch.Tensor:
-
         solution = solution.clone()  # if solution=[2,0,1], means 0->2->1->0.
         graph_size_plus1 = solution.size(1)
+
+        assert (
+            (pair_first != first).all()
+            and (pair_first != second).all()
+            and ((pair_first + graph_size_plus1 // 2) != first).all()
+            and ((pair_first + graph_size_plus1 // 2) != second).all()
+        )
 
         # remove pair node
         pre = solution.argsort()  # pre=[1,2,0]
@@ -64,7 +70,9 @@ class PDP(ABC):
         post_pair_first = solution.gather(1, pair_first)  # (batch_size, 1)
 
         solution.scatter_(1, pre_pair_first, post_pair_first)  # remove pair first
-        solution.scatter_(1, pair_first, pair_first)  # let: pair first -> pair first
+        solution.scatter_(
+            1, pair_first, pair_first
+        )  # let: pair first -> pair first, for next line's pre correct
 
         pre = solution.argsort()
 
@@ -147,6 +155,21 @@ class PDP(ABC):
             torch.cat((new_obj[:, None], now_best_obj[:, None]), -1),
             action_record,
         )
+
+    @staticmethod
+    def direct_solution(solution: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_length = solution.size()
+        arange = torch.arange(batch_size)
+        visit_index = torch.zeros((batch_size, seq_length), device=solution.device)
+        pre = torch.zeros((batch_size), device=solution.device).long()
+
+        for i in range(seq_length):
+            current_nodes = solution[arange, pre]  # (batch_size,)
+            visit_index[arange, current_nodes] = i + 1
+            pre = current_nodes
+
+        visit_index = (visit_index % seq_length).long()
+        return visit_index.argsort()
 
 
 class PDPDataset(Dataset):

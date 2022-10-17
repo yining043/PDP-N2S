@@ -71,7 +71,7 @@ class Actor(nn.Module):
         )  # for NFEs
 
         self.decoder = N2SDecoder(
-            self.embedding_dim, self.v_range
+            self.n_heads_actor, self.embedding_dim, self.v_range
         )  # the two propsoed decoders
 
         print(self.get_parameter_number())

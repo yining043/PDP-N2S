@@ -394,9 +394,8 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
 
 
 class N2SDecoder(nn.Module):
-    def __init__(self, input_dim: int, v_range: float = 6) -> None:
+    def __init__(self, n_heads: int, input_dim: int, v_range: float = 6) -> None:
         super().__init__()
-        n_heads = 4
         self.input_dim = input_dim
         self.range = v_range
 

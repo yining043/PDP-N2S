@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 import os
 from tqdm import tqdm
 import warnings
@@ -28,16 +28,16 @@ class Memory:
         self.states: List[torch.Tensor] = []
         self.logprobs: List[torch.Tensor] = []
         self.rewards: List[torch.Tensor] = []
-        self.obj: List[torch.Tensor] = []
-        self.action_record: List[List[torch.Tensor]] = []
+        self.best_obj: List[torch.Tensor] = []
+        self.action_removal_record: List[List[torch.Tensor]] = []
 
     def clear_memory(self) -> None:
         del self.actions[:]
         del self.states[:]
         del self.logprobs[:]
         del self.rewards[:]
-        del self.obj[:]
-        del self.action_record[:]
+        del self.best_obj[:]
+        del self.action_removal_record[:]
 
 
 class PPO(Agent):
@@ -101,14 +101,14 @@ class PPO(Agent):
         model_actor = get_inner_model(self.actor)
         model_actor.load_state_dict(
             {**model_actor.state_dict(), **load_data.get('actor', {})}
-        )
+        )  # question
 
         if not self.opts.eval_only:
             # load data for critic
             model_critic = get_inner_model(self.critic)
             model_critic.load_state_dict(
                 {**model_critic.state_dict(), **load_data.get('critic', {})}
-            )
+            )  # question
             # load data for optimizer
             self.optimizer.load_state_dict(load_data['optimizer'])
             # load data for torch and cuda
@@ -144,14 +144,10 @@ class PPO(Agent):
             self.critic.train()
 
     def rollout(
-        self,
-        problem: PDP,
-        val_m: int,
-        batch: Dict[str, torch.Tensor],
-        show_bar: bool = False,
+        self, problem: PDP, val_m: int, batch: Dict[str, torch.Tensor], show_bar: bool
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        batch = move_to(batch, self.opts.device)  # batch_size, graph_size+1, 2
-        batch_size, graph_size_plus1, dim = batch['coordinates'].size()
+        batch = move_to(batch, self.opts.device)
+        batch_size, graph_size_plus1, node_dim = batch['coordinates'].size()
         batch['coordinates'] = batch['coordinates'].unsqueeze(1).repeat(1, val_m, 1, 1)
         augments = ['Rotate', 'Flip_x-y', 'Flip_x_cor', 'Flip_y_cor']
         if val_m > 1:
@@ -179,25 +175,28 @@ class PPO(Agent):
                                 1 - batch['coordinates'][:, i, :, 1]
                             )
 
-        batch['coordinates'] = batch['coordinates'].view(-1, graph_size_plus1, dim)
+        batch['coordinates'] = batch['coordinates'].view(-1, graph_size_plus1, node_dim)
         solution = move_to(
             problem.get_initial_solutions(batch), self.opts.device
         ).long()
 
-        obj = problem.get_costs(batch, solution)
+        obj = problem.get_costs(batch, solution)  # (new_batch_size,)
 
-        obj_history = [torch.cat((obj[:, None], obj[:, None]), -1)]
-        reward = []
+        obj_history = [
+            torch.cat((obj[:, None], obj[:, None]), -1)
+        ]  # [(new_batch_size, 2)]
 
-        batch_feature = PDP.input_feature_encoding(batch)
+        rewards: List[torch.Tensor] = []
 
-        exchange = None
-        action_record = [
+        batch_feature = PDP.input_coordinates(batch)
+
+        action = None
+        action_removal_record = [
             torch.zeros((batch_feature.size(0), problem.size // 2))
-            for i in range(problem.size // 2)
+            for _ in range(problem.size // 2)  # question
         ]
 
-        for t in tqdm(
+        for _ in tqdm(
             range(self.opts.T_max),
             disable=self.opts.no_progress_bar or not show_bar,
             desc='rollout',
@@ -205,30 +204,30 @@ class PPO(Agent):
         ):
 
             # pass through model
-            exchange = self.actor(
-                problem, batch_feature, solution, exchange, action_record
+            action = self.actor(
+                problem, batch_feature, solution, action, action_removal_record
             )[0]
 
             # new solution
-            solution, rewards, obj, action_record = problem.step(
-                batch, solution, exchange, obj, action_record
+            solution, reward, obj, action_removal_record = problem.step(
+                batch, solution, action, obj, action_removal_record
             )
 
             # record informations
-            reward.append(rewards)
-            obj_history.append(obj)
+            rewards.append(reward)  # [(new_batch_size,), ...]
+            obj_history.append(obj)  # [(new_batch_size, 2), ...]
 
         out = (
-            obj[:, -1].reshape(batch_size, val_m).min(1)[0],  # batch_size, 1
-            torch.stack(obj_history, 1)[:, :, 0]
+            obj[:, -1].reshape(batch_size, val_m).min(1)[0],  # (batch_size, 1)
+            torch.stack(obj_history, 1)[:, :, 0]  # current obj
             .view(batch_size, val_m, -1)
-            .min(1)[0],  # batch_size, T
-            torch.stack(obj_history, 1)[:, :, -1]
+            .min(1)[0],  # (batch_size, T)
+            torch.stack(obj_history, 1)[:, :, -1]  # current best obj
             .view(batch_size, val_m, -1)
-            .min(1)[0],  # batch_size, T
-            torch.stack(reward, 1)
+            .min(1)[0],  # (batch_size, T)
+            torch.stack(rewards, 1)
             .view(batch_size, val_m, -1)
-            .max(1)[0],  # batch_size, T
+            .max(1)[0],  # (batch_size, T)
         )
 
         return out
@@ -330,9 +329,9 @@ def train(
             size=opts.graph_size, num_samples=opts.epoch_size
         )
         if opts.distributed:
-            train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_sampler: Any = torch.utils.data.distributed.DistributedSampler(
                 training_dataset, shuffle=False
-            )  # type: ignore
+            )
             training_dataloader = DataLoader(
                 training_dataset,
                 batch_size=opts.batch_size // opts.world_size,
@@ -382,18 +381,18 @@ def train(
                 or epoch == opts.epoch_end - 1
             ):
                 agent.save(epoch)
-        elif opts.distributed and rank == 1:
+        elif opts.distributed and rank == 1:  # question: why rank 1
             if not opts.no_saving and (
                 (opts.checkpoint_epochs != 0 and epoch % opts.checkpoint_epochs == 0)
                 or epoch == opts.epoch_end - 1
             ):
                 agent.save(epoch)
 
-        # validate the new model
+        # validate the new model # question
         if rank == 0 and not opts.distributed:
-            validate(rank, problem, agent, val_dataset, tb_logger, _id=epoch)
+            validate(rank, problem, agent, val_dataset, tb_logger, id_=epoch)
         if rank == 0 and opts.distributed:
-            validate(rank, problem, agent, val_dataset, tb_logger, _id=epoch)
+            validate(rank, problem, agent, val_dataset, tb_logger, id_=epoch)
 
         # syn
         if opts.distributed:
@@ -421,20 +420,20 @@ def train_batch(
         move_to_cuda(batch, rank) if opts.distributed else move_to(batch, opts.device)
     )  # batch_size, graph_size+1, 2
     batch_feature = (
-        PDP.input_feature_encoding(batch).cuda()
+        PDP.input_coordinates(batch).cuda()  # question: wrong?
         if opts.distributed
-        else move_to(PDP.input_feature_encoding(batch), opts.device)
+        else move_to(PDP.input_coordinates(batch), opts.device)
     )
     batch_size = batch_feature.size(0)
-    exchange = (
+    action = (
         move_to_cuda(torch.tensor([-1, -1, -1]).repeat(batch_size, 1), rank)
         if opts.distributed
         else move_to(torch.tensor([-1, -1, -1]).repeat(batch_size, 1), opts.device)
     )
 
-    action_record = [
+    action_removal_record = [
         torch.zeros((batch_feature.size(0), problem.size // 2))
-        for i in range(problem.size)
+        for _ in range(problem.size)
     ]
     # print(f"rank {rank}, data from {batch['id'][0]},{batch['id'][1]} , to {batch['id'][-2]},{batch['id'][-1]}")
 
@@ -450,16 +449,16 @@ def train_batch(
     if opts.warm_up:
         agent.eval()
 
-        for w in range(int(epoch // opts.warm_up)):
+        for _ in range(int(epoch // opts.warm_up)):
 
             # get model output
-            exchange = agent.actor(
-                problem, batch_feature, solution, exchange, action_record
+            action = agent.actor(
+                problem, batch_feature, solution, action, action_removal_record
             )[0]
 
             # state transient
-            solution, rewards, obj, action_record = problem.step(
-                batch, solution, exchange, obj, action_record
+            solution, rewards, obj, action_removal_record = problem.step(
+                batch, solution, action, obj, action_removal_record
             )
 
         obj = problem.get_costs(batch, solution)
@@ -479,7 +478,7 @@ def train_batch(
     while t < T:
 
         t_s = t
-        memory.actions.append(exchange)
+        memory.actions.append(action)
 
         # data array
         total_cost = torch.tensor(0)
@@ -492,36 +491,36 @@ def train_batch(
         while t - t_s < n_step and not (t == T):
 
             memory.states.append(solution)
-            memory.action_record.append(action_record.copy())
+            memory.action_removal_record.append(action_removal_record.copy())
 
             # get model output
 
-            exchange, log_lh, _to_critic, entro_p = agent.actor(
+            action, log_lh, to_critic_, entro_p = agent.actor(
                 problem,
                 batch_feature,
                 solution,
-                exchange,
-                action_record,
-                require_entropy=True,  # take same action
+                action,
+                action_removal_record,
+                require_entropy=True,
                 to_critic=True,
-            )  # type: ignore
+            )
 
-            memory.actions.append(exchange)
+            memory.actions.append(action)
             memory.logprobs.append(log_lh)
-            memory.obj.append(obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1))
+            memory.best_obj.append(obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1))
 
-            entropy_list.append(entro_p.detach().cpu())  # type: ignore
+            entropy_list.append(entro_p.detach().cpu())
 
             baseline_val_detached, baseline_val = agent.critic(
-                _to_critic, obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1)
+                to_critic_, obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1)
             )
 
             bl_val_detached_list.append(baseline_val_detached)
             bl_val_list.append(baseline_val)
 
             # state transient
-            solution, rewards, obj, action_record = problem.step(
-                batch, solution, exchange, obj, action_record
+            solution, rewards, obj, action_removal_record = problem.step(
+                batch, solution, action, obj, action_removal_record
             )
             memory.rewards.append(rewards)
             # memory.mask_true = memory.mask_true + info['swaped']
@@ -543,17 +542,17 @@ def train_batch(
         old_states = torch.stack(memory.states).detach().view(t_time, batch_size, -1)
         old_actions = all_actions[1:].view(t_time, -1, 3)
         old_logprobs = torch.stack(memory.logprobs).detach().view(-1)
-        old_exchange = all_actions[:-1].view(t_time, -1, 3)
-        old_action_records = memory.action_record
+        old_pre_actions = all_actions[:-1].view(t_time, -1, 3)
+        old_action_removal_record = memory.action_removal_record
 
-        old_obj = torch.stack(memory.obj)
+        old_best_obj = torch.stack(memory.best_obj)
 
         # Optimize ppo policy for K mini-epochs:
         old_value = None
 
-        for _k in range(K_epochs):
+        for k_ in range(K_epochs):
 
-            if _k == 0:
+            if k_ == 0:
                 logprobs_list = memory.logprobs
 
             else:
@@ -565,22 +564,22 @@ def train_batch(
 
                 for tt in range(t_time):
                     # get new action_prob
-                    _, log_p, _to_critic, entro_p = agent.actor(
+                    _, log_p, to_critic_, entro_p = agent.actor(
                         problem,
                         batch_feature,
                         old_states[tt],
-                        old_exchange[tt],
-                        old_action_records[tt],
-                        fixed_action=old_actions[tt],
-                        require_entropy=True,  # take same action
+                        old_pre_actions[tt],
+                        old_action_removal_record[tt],
+                        fixed_action=old_actions[tt],  # take same action
+                        require_entropy=True,
                         to_critic=True,
-                    )  # type: ignore
+                    )
 
                     logprobs_list.append(log_p)
-                    entropy_list.append(entro_p.detach().cpu())  # type: ignore
+                    entropy_list.append(entro_p.detach().cpu())
 
                     baseline_val_detached, baseline_val = agent.critic(
-                        _to_critic, old_obj[tt]
+                        to_critic_, old_best_obj[tt]
                     )
 
                     bl_val_detached_list.append(baseline_val_detached)
@@ -601,10 +600,10 @@ def train_batch(
                     problem,
                     batch_feature,
                     solution,
-                    exchange,
-                    action_record,
+                    action,
+                    action_removal_record,
                     only_critic=True,
-                ),
+                )[0],
                 obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1),
             )[0]
             for r in range(len(reward_reversed)):
@@ -612,7 +611,7 @@ def train_batch(
                 Reward_list.append(R)
 
             # clip the target:
-            Reward = torch.stack(Reward_list[::-1], 0)  # n_step, bs
+            Reward = torch.stack(Reward_list[::-1], 0)  # (n_step, batch_size)
             Reward = Reward.view(-1)
 
             # Finding the ratio (pi_theta / pi_theta__old):
@@ -653,11 +652,11 @@ def train_batch(
 
             # Clip gradient norm and get (clipped) gradient norms for logging
             current_step = int(
-                step * T / n_step * K_epochs + t // n_step * K_epochs + _k
+                step * T / n_step * K_epochs + t // n_step * K_epochs + k_
             )
             grad_norms = clip_grad_norms(
                 agent.optimizer.param_groups, opts.max_grad_norm
-            )
+            )  # question: no work?
 
             # perform gradient descent
             agent.optimizer.step()

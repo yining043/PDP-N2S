@@ -55,11 +55,11 @@ class PDTSP(PDP):
                 candidates.scatter_(1, selected_node, 0)  # set to False
 
                 for _ in range(self.size):
-                    dists = torch.ones(batch_size, self.size + 1)
+                    dists: torch.Tensor = torch.ones(batch_size, self.size + 1)
                     dists.scatter_(1, selected_node, -1e20)
                     dists[~candidates] = -1e20
                     dists = torch.softmax(dists, -1)
-                    next_selected_node = dists.multinomial(1).view(-1, 1)
+                    next_selected_node: torch.Tensor = dists.multinomial(1).view(-1, 1)
 
                     add_index = (next_selected_node <= half_size).view(-1)
                     pairing = (
@@ -98,13 +98,11 @@ class PDTSP(PDP):
                     )
                     d2 = batch['coordinates'].cpu()  # (batch_size, graph_size+1, 2)
 
-                    dists: torch.Tensor = (d1 - d2).norm(
-                        p=2, dim=2
-                    )  # (batch_size, graph_size+1)
+                    dists = (d1 - d2).norm(p=2, dim=2)  # (batch_size, graph_size+1)
                     # dists = batch['dist'].cpu().gather(1,selected_node.view(batch_size,1,1).expand(batch_size, 1, self.size + 1)).squeeze().clone()
                     dists.scatter_(1, selected_node, 1e6)
                     dists[~candidates] = 1e6
-                    next_selected_node: torch.Tensor = dists.min(-1)[1].view(-1, 1)
+                    next_selected_node = dists.min(-1)[1].view(-1, 1)
 
                     add_index = (next_selected_node <= half_size).view(-1)
                     pairing = (

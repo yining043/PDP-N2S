@@ -37,7 +37,7 @@ class PDP(ABC):
         pass
 
     @staticmethod
-    def input_feature_encoding(batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def input_coordinates(batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         return batch['coordinates']
 
     @staticmethod
@@ -95,8 +95,13 @@ class PDP(ABC):
         return solution
 
     @staticmethod
-    def make_dataset(*args, **kwargs) -> 'PDPDataset':
-        return PDPDataset(*args, **kwargs)
+    def make_dataset(
+        filename: Optional[str] = None,
+        size: int = 20,
+        num_samples: int = 10000,
+        offset: int = 0,
+    ) -> 'PDPDataset':
+        return PDPDataset(filename, size, num_samples, offset)
 
     def get_costs(
         self, batch: Dict[str, torch.Tensor], solution: torch.Tensor
@@ -113,7 +118,7 @@ class PDP(ABC):
             1, solution.long().unsqueeze(-1).expand(batch_size, graph_size_plus1, 2)
         )
         d2 = batch['coordinates']
-        length = (d1 - d2).norm(p=2, dim=2).sum(1)
+        length = (d1 - d2).norm(p=2, dim=2).sum(1)  # (batch_size,)
 
         return length
 
@@ -123,21 +128,21 @@ class PDP(ABC):
             str, torch.Tensor
         ],  # ['coordinates']: (batch_size, graph_size+1, 2)
         solution: torch.Tensor,  # (batch_size, graph_size+1)
-        exchange: torch.Tensor,  # (batch_size, 3)
-        pre_best_obj: torch.Tensor,  # (batch_size,)
-        action_record: List[torch.Tensor],  # graph_size * (batch_size, graph_size/2)
+        action: torch.Tensor,  # (batch_size, 3)
+        pre_best_obj: torch.Tensor,  # (batch_size, 2) or (batch_size,)
+        action_removal_record: List[torch.Tensor],  # len * (batch_size, graph_size/2)
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor]]:
 
         batch_size = solution.size(0)
         pre_best_obj = pre_best_obj.view(batch_size, -1)
 
-        cur_vec = action_record.pop(0) * 0.0
-        cur_vec[torch.arange(batch_size), exchange[:, 0]] = 1.0
-        action_record.append(cur_vec)
+        cur_vec = action_removal_record.pop(0) * 0.0
+        cur_vec[torch.arange(batch_size), action[:, 0]] = 1.0
+        action_removal_record.append(cur_vec)
 
-        selected_minus1 = exchange[:, 0].view(batch_size, 1)
-        first = exchange[:, 1].view(batch_size, 1)
-        second = exchange[:, 2].view(batch_size, 1)
+        selected_minus1 = action[:, 0].view(batch_size, 1)
+        first = action[:, 1].view(batch_size, 1)
+        second = action[:, 2].view(batch_size, 1)
 
         next_state = PDP._insert_star(solution, selected_minus1 + 1, first, second)
 
@@ -153,7 +158,7 @@ class PDP(ABC):
             next_state,
             reward,
             torch.cat((new_obj[:, None], now_best_obj[:, None]), -1),
-            action_record,
+            action_removal_record,
         )
 
     @staticmethod
@@ -174,11 +179,7 @@ class PDP(ABC):
 
 class PDPDataset(Dataset):
     def __init__(
-        self,
-        filename: Optional[str] = None,
-        size: int = 20,
-        num_samples: int = 10000,
-        offset: int = 0,
+        self, filename: Optional[str], size: int, num_samples: int, offset: int
     ):
 
         super().__init__()

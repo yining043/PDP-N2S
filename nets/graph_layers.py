@@ -22,7 +22,7 @@ class SkipConnection(nn.Module):
         super().__init__()
         self.module = module
 
-    __call__: Callable[..., torch.Tensor]
+    __call__: Callable[['SkipConnection', torch.Tensor], torch.Tensor]
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return input + self.module(input)
@@ -146,49 +146,6 @@ class MultiHeadSelfAttentionScore(nn.Module):
         return self.MHA(q, q)
 
 
-class CriticDecoder(nn.Module):
-    def __init__(self, input_dim: int) -> None:
-        super().__init__()
-        self.input_dim = input_dim
-
-        self.project_graph = nn.Linear(self.input_dim, self.input_dim // 2)
-
-        self.project_node = nn.Linear(self.input_dim, self.input_dim // 2)
-
-        self.MLP = MLP(input_dim + 1, input_dim)
-
-    __call__: Callable[..., torch.Tensor]
-
-    def forward(self, h_wave: torch.Tensor, best_cost: torch.Tensor) -> torch.Tensor:
-
-        # h_wave: (batch_size, graph_size+1, input_size)
-        mean_pooling = h_wave.mean(1)  # mean Pooling (batch_size, input_size)
-        graph_feature: torch.Tensor = self.project_graph(mean_pooling)[
-            :, None, :
-        ]  # (batch_size, 1, input_dim/2)
-        node_feature: torch.Tensor = self.project_node(
-            h_wave
-        )  # (batch_size, graph_size+1, input_dim/2)
-
-        # pass through value_head, get estimated value
-        fusion = node_feature + graph_feature.expand_as(
-            node_feature
-        )  # (batch_size, graph_size+1, input_dim/2)
-
-        fusion_feature = torch.cat(
-            (
-                fusion.mean(1),
-                fusion.max(1)[0],  # max_pooling
-                best_cost.to(h_wave.device),
-            ),
-            -1,
-        )  # (batch_size, input_dim + 1)
-
-        value = self.MLP(fusion_feature)
-
-        return value
-
-
 class MLP(nn.Module):
     def __init__(
         self,
@@ -221,6 +178,49 @@ class MLP(nn.Module):
         result = self.ReLU(self.fc2(result))
         result = self.fc3(result).squeeze(-1)
         return result
+
+
+class CriticDecoder(nn.Module):
+    def __init__(self, input_dim: int) -> None:
+        super().__init__()
+        self.input_dim = input_dim
+
+        self.project_graph = nn.Linear(self.input_dim, self.input_dim // 2)
+
+        self.project_node = nn.Linear(self.input_dim, self.input_dim // 2)
+
+        self.MLP = MLP(input_dim + 1, input_dim)
+
+    __call__: Callable[..., torch.Tensor]
+
+    def forward(self, y: torch.Tensor, best_cost: torch.Tensor) -> torch.Tensor:
+
+        # h_wave: (batch_size, graph_size+1, input_size)
+        mean_pooling = y.mean(1)  # mean Pooling (batch_size, input_size)
+        graph_feature: torch.Tensor = self.project_graph(mean_pooling)[
+            :, None, :
+        ]  # (batch_size, 1, input_dim/2)
+        node_feature: torch.Tensor = self.project_node(
+            y
+        )  # (batch_size, graph_size+1, input_dim/2)
+
+        # pass through value_head, get estimated value
+        fusion = node_feature + graph_feature.expand_as(
+            node_feature
+        )  # (batch_size, graph_size+1, input_dim/2)
+
+        fusion_feature = torch.cat(
+            (
+                fusion.mean(1),
+                fusion.max(1)[0],  # max_pooling
+                best_cost.to(y.device),
+            ),
+            -1,
+        )  # (batch_size, input_dim + 1)
+
+        value = self.MLP(fusion_feature)
+
+        return value
 
 
 class NodePairRemovalDecoder(nn.Module):  # (12) (13)
@@ -394,10 +394,10 @@ class NodePairReinsertionDecoder(nn.Module):  # (14) (15)
 
 
 class N2SDecoder(nn.Module):
-    def __init__(self, n_heads: int, input_dim: int, v_range: float = 6) -> None:
+    def __init__(self, n_heads: int, input_dim: int, v_range: float) -> None:
         super().__init__()
         self.input_dim = input_dim
-        self.range = v_range
+        self.v_range = v_range
 
         if TYPE_REMOVAL == 'N2S':
             self.compater_removal = NodePairRemovalDecoder(n_heads, input_dim)
@@ -413,7 +413,7 @@ class N2SDecoder(nn.Module):
             stdv = 1.0 / math.sqrt(param.size(-1))
             param.data.uniform_(-stdv, stdv)
 
-    __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]
+    __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
 
     def forward(
         self,
@@ -423,11 +423,11 @@ class N2SDecoder(nn.Module):
         x_in: torch.Tensor,
         top2: torch.Tensor,
         visit_index: torch.Tensor,
-        pre_action: torch.Tensor,
+        pre_action: Optional[torch.Tensor],
         selection_recent: torch.Tensor,
-        fixed_action: Optional[torch.Tensor] = None,
-        require_entropy: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        fixed_action: Optional[torch.Tensor],
+        require_entropy: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
         batch_size, graph_size_plus1, input_dim = h_wave.size()
         half_pos = (graph_size_plus1 - 1) // 2
@@ -440,18 +440,19 @@ class N2SDecoder(nn.Module):
             batch_size, graph_size_plus1, input_dim
         )  # (11)
 
+        null = torch.tensor([])
         ############# action1 removal
         if TYPE_REMOVAL == 'N2S':
             action_removal_table = (
                 torch.tanh(
                     self.compater_removal(h_hat, solution, selection_recent).squeeze()
                 )
-                * self.range
+                * self.v_range
             )
             if pre_action is not None and pre_action[0, 0] > 0:
                 action_removal_table[arange, pre_action[:, 0]] = -1e20
             log_ll_removal = (
-                F.log_softmax(action_removal_table, dim=-1) if self.training else None
+                F.log_softmax(action_removal_table, dim=-1) if self.training else null
             )  # log-likelihood
             probs_removal = F.softmax(action_removal_table, dim=-1)
         elif TYPE_REMOVAL == 'random':
@@ -509,7 +510,7 @@ class N2SDecoder(nn.Module):
             else:
                 assert False
         selected_log_ll_action1 = (
-            log_ll_removal.gather(1, action_removal)  # type: ignore
+            log_ll_removal.gather(1, action_removal)
             if self.training and TYPE_REMOVAL == 'N2S'
             else torch.tensor(0).to(h_hat.device)
         )
@@ -527,7 +528,7 @@ class N2SDecoder(nn.Module):
                 torch.tanh(
                     self.compater_reinsertion(h_hat, pos_pickup, pos_delivery, solution)
                 )
-                * self.range
+                * self.v_range
             )
         elif TYPE_REINSERTION == 'random':
             action_reinsertion_table = torch.ones(
@@ -601,7 +602,7 @@ class N2SDecoder(nn.Module):
         log_ll_reinsertion = (
             F.log_softmax(action_reinsertion_table, dim=-1)
             if self.training and TYPE_REINSERTION == 'N2S'
-            else None
+            else null
         )
         probs_reinsertion = F.softmax(action_reinsertion_table, dim=-1)
         # fixed action
@@ -633,7 +634,7 @@ class N2SDecoder(nn.Module):
             )  # batch_size, 3
 
         selected_log_ll_action2 = (
-            log_ll_reinsertion.gather(1, pair_index)  # type: ignore
+            log_ll_reinsertion.gather(1, pair_index)
             if self.training and TYPE_REINSERTION == 'N2S'
             else torch.tensor(0).to(h_hat.device)
         )
@@ -644,7 +645,7 @@ class N2SDecoder(nn.Module):
             dist = Categorical(probs_reinsertion, validate_args=False)
             entropy = dist.entropy()
         else:
-            entropy = None
+            entropy = null
 
         return action, log_ll, entropy
 
@@ -810,11 +811,7 @@ class FFNormSubLayer(nn.Module):
 
 class N2SEncoder(nn.Module):
     def __init__(
-        self,
-        n_heads: int,
-        input_dim: int,
-        feed_forward_hidden: int,
-        normalization: str = 'layer',
+        self, n_heads: int, input_dim: int, feed_forward_hidden: int, normalization: str
     ) -> None:
         super().__init__()
 
@@ -901,7 +898,7 @@ class EmbeddingNet(nn.Module):
                     np.linspace(0, num, seq_length, dtype='int', endpoint=False)
                 ]
 
-        pattern: torch.Tensor = torch.from_numpy(g).type(torch.FloatTensor)  # type: ignore
+        pattern = torch.from_numpy(g).float()
         pattern_sum = torch.zeros_like(pattern)
 
         # averaging the adjacient embeddings if needed (optional, almost the same performance)
@@ -918,8 +915,8 @@ class EmbeddingNet(nn.Module):
         return pattern  # (seq_length, embedding_dim)
 
     def _position_embedding(
-        self, solution: torch.Tensor, embedding_dim: int, clac_stacks: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        self, solution: torch.Tensor, embedding_dim: int, clac_stacks: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_length = solution.size()
         half_size = seq_length // 2
 
@@ -972,16 +969,16 @@ class EmbeddingNet(nn.Module):
         return (
             torch.gather(position_emb_new, 1, index),
             (visit_index % seq_length).long(),
-            top2 if clac_stacks else None,
+            top2 if clac_stacks else torch.tensor([]),
         )
 
     __call__: Callable[
-        ..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
+        ..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
     ]
 
     def forward(
-        self, x: torch.Tensor, solution: torch.Tensor, clac_stacks: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        self, x: torch.Tensor, solution: torch.Tensor, clac_stacks: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         pos_emb, visit_index, top2 = self._position_embedding(
             solution, self.embedding_dim, clac_stacks
         )
@@ -991,11 +988,7 @@ class EmbeddingNet(nn.Module):
 
 class CriticEncoder(nn.Sequential):
     def __init__(
-        self,
-        n_heads: int,
-        input_dim: int,
-        feed_forward_hidden: int,
-        normalization: str = 'layer',
+        self, n_heads: int, input_dim: int, feed_forward_hidden: int, normalization: str
     ) -> None:
         super().__init__(
             SkipConnection(MultiHeadSelfAttention(n_heads, input_dim)),

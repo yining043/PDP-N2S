@@ -27,7 +27,7 @@ def validate(
     val_dataset_str: str,
     tb_logger: TbLogger,
     distributed: bool = False,
-    _id: Optional[int] = None,
+    id_: Optional[int] = None,
 ) -> None:
 
     # Validate mode
@@ -155,5 +155,5 @@ def validate(
             dataset_size=len(val_dataset),
             T=opts.T_max,
             show_figs=opts.show_figs,
-            epoch=_id,
+            epoch=id_,
         )

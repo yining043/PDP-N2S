@@ -33,16 +33,15 @@ class Critic(nn.Module):
             )
         )
 
-        self.value_head = CriticDecoder(self.embedding_dim)
+        self.decoder = CriticDecoder(self.embedding_dim)
 
     __call__: Callable[..., Tuple[torch.Tensor, torch.Tensor]]
 
     def forward(
-        self, h_features: torch.Tensor, cost: torch.Tensor
+        self, h_wave: torch.Tensor, best_cost: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        h_fea = h_features.detach()
-        h_enc = self.encoder(h_fea)
-        baseline_value = self.value_head(h_enc, cost)
+        y = self.encoder(h_wave.detach())
+        baseline_value = self.decoder(y, best_cost)
 
         return baseline_value.detach().squeeze(), baseline_value.squeeze()

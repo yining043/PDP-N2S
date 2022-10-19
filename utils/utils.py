@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 import torch
 from torch import nn
 import math
@@ -19,7 +19,7 @@ def rotate_tensor(x: torch.Tensor, d: float) -> torch.Tensor:
     return torch.matmul(x - 0.5, rot_mat) + 0.5
 
 
-def torch_load_cpu(load_path: str) -> Any:
+def torch_load_cpu(load_path: str) -> Dict[str, Any]:
     return torch.load(
         load_path, map_location=lambda storage, loc: storage
     )  # Load on CPU

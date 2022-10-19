@@ -38,11 +38,7 @@ class Agent(ABC):
 
     @abstractmethod
     def rollout(
-        self,
-        problem: PDP,
-        val_m: int,
-        batch: Dict[str, torch.Tensor],
-        show_bar: bool = False,
+        self, problem: PDP, val_m: int, batch: Dict[str, torch.Tensor], show_bar: bool
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         pass
 

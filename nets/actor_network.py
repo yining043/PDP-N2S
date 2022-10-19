@@ -82,28 +82,22 @@ class Actor(nn.Module):
         return {'Total': total_num, 'Trainable': trainable_num}
 
     @staticmethod
-    def get_action_recent(action_record: List[torch.Tensor]) -> torch.Tensor:
-        action_record_tensor = torch.stack(action_record)
+    def _get_action_removal_recent(
+        action_removal_record: List[torch.Tensor],
+    ) -> torch.Tensor:
+        action_removal_record_tensor = torch.stack(
+            action_removal_record
+        )  # (len_action_record, batch_size, graph_size/2)
         return torch.cat(
             (
-                action_record_tensor[-3:].transpose(0, 1),
-                action_record_tensor.mean(0).unsqueeze(1),
+                action_removal_record_tensor[-3:].transpose(0, 1),
+                action_removal_record_tensor.mean(0).unsqueeze(1),
             ),
             1,
-        )
+        )  # (batch_size, 4, graph_size/2)
 
     __call__: Callable[
-        ...,
-        Union[
-            torch.Tensor,
-            Tuple[
-                torch.Tensor,
-                torch.Tensor,
-                Optional[torch.Tensor],
-                Optional[torch.Tensor],
-            ],
-            Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]],
-        ],
+        ..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
     ]
 
     def forward(
@@ -111,23 +105,13 @@ class Actor(nn.Module):
         problem: PDP,
         x_in: torch.Tensor,
         solution: torch.Tensor,
-        exchange: torch.Tensor,
-        action_record: List[torch.Tensor],
+        pre_action: torch.Tensor,
+        action_removal_record: List[torch.Tensor],
         fixed_action: bool = None,
         require_entropy: bool = False,
         to_critic: bool = False,
         only_critic: bool = False,
-    ) -> Union[
-        torch.Tensor,
-        Tuple[
-            torch.Tensor,
-            torch.Tensor,
-            Optional[torch.Tensor],
-            Optional[torch.Tensor],
-        ],
-        Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]],
-    ]:
-
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # the embedded input x
         # batch_size, graph_size+1, node_dim = x_in.size()
 
@@ -139,8 +123,9 @@ class Actor(nn.Module):
         aux_att = self.pos_emb_encoder(g_pos)
         h_wave = self.encoder(h_fea, aux_att)[0]
 
+        null = torch.tensor([])
         if only_critic:
-            return h_wave
+            return h_wave, null, null, null
 
         # pass through decoder
         action, log_ll, entropy = self.decoder(
@@ -150,13 +135,17 @@ class Actor(nn.Module):
             x_in=x_in,
             top2=top2,
             visit_index=visit_index,
-            pre_action=exchange,
-            selection_recent=Actor.get_action_recent(action_record).to(x_in.device),
+            pre_action=pre_action,
+            selection_recent=Actor._get_action_removal_recent(action_removal_record).to(
+                x_in.device
+            ),
             fixed_action=fixed_action,
             require_entropy=require_entropy,
         )
 
-        if require_entropy:
-            return action, log_ll.squeeze(), h_wave if to_critic else None, entropy
-        else:
-            return action, log_ll.squeeze(), h_wave if to_critic else None
+        return (
+            action,
+            log_ll.squeeze(),
+            h_wave if to_critic else null,
+            entropy if require_entropy else null,
+        )

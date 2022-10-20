@@ -105,7 +105,7 @@ class Actor(nn.Module):
         problem: PDP,
         x_in: torch.Tensor,
         solution: torch.Tensor,
-        pre_action: torch.Tensor,
+        pre_action: Optional[torch.Tensor],
         action_removal_record: List[torch.Tensor],
         fixed_action: bool = None,
         require_entropy: bool = False,

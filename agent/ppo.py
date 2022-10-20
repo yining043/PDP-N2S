@@ -13,7 +13,7 @@ import random
 from utils import clip_grad_norms, rotate_tensor
 from nets.actor_network import Actor
 from nets.critic_network import Critic
-from utils import torch_load_cpu, get_inner_model, move_to, move_to_cuda
+from utils import torch_load_cpu, get_inner_model, move_to
 from utils.logger import log_to_tb_train
 from problems.problem_pdp import PDP
 from options import Option
@@ -99,16 +99,11 @@ class PPO(Agent):
         load_data = torch_load_cpu(load_path)
         # load data for actor
         model_actor = get_inner_model(self.actor)
-        model_actor.load_state_dict(
-            {**model_actor.state_dict(), **load_data.get('actor', {})}
-        )  # question
-
+        model_actor.load_state_dict(load_data.get('actor', {}))
         if not self.opts.eval_only:
             # load data for critic
             model_critic = get_inner_model(self.critic)
-            model_critic.load_state_dict(
-                {**model_critic.state_dict(), **load_data.get('critic', {})}
-            )  # question
+            model_critic.load_state_dict(load_data.get('critic', {}))
             # load data for optimizer
             self.optimizer.load_state_dict(load_data['optimizer'])
             # load data for torch and cuda
@@ -193,7 +188,7 @@ class PPO(Agent):
         action = None
         action_removal_record = [
             torch.zeros((batch_feature.size(0), problem.size // 2))
-            for _ in range(problem.size // 2)  # question
+            for _ in range(problem.size // 2)  # N2S paper section 4.4 last sentence
         ]
 
         for _ in tqdm(
@@ -359,7 +354,7 @@ def train(
             desc='training',
             bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}',
         )
-        for batch_id, batch in enumerate(training_dataloader):
+        for batch in training_dataloader:
             train_batch(
                 rank,
                 problem,
@@ -381,17 +376,15 @@ def train(
                 or epoch == opts.epoch_end - 1
             ):
                 agent.save(epoch)
-        elif opts.distributed and rank == 1:  # question: why rank 1
+        elif opts.distributed and rank == 1:
             if not opts.no_saving and (
                 (opts.checkpoint_epochs != 0 and epoch % opts.checkpoint_epochs == 0)
                 or epoch == opts.epoch_end - 1
             ):
                 agent.save(epoch)
 
-        # validate the new model # question
-        if rank == 0 and not opts.distributed:
-            validate(rank, problem, agent, val_dataset, tb_logger, id_=epoch)
-        if rank == 0 and opts.distributed:
+        # validate the new model
+        if rank == 0:
             validate(rank, problem, agent, val_dataset, tb_logger, id_=epoch)
 
         # syn
@@ -417,29 +410,29 @@ def train_batch(
 
     # prepare the input
     batch = (
-        move_to_cuda(batch, rank) if opts.distributed else move_to(batch, opts.device)
+        move_to(batch, rank) if opts.distributed else move_to(batch, opts.device)
     )  # batch_size, graph_size+1, 2
     batch_feature = (
-        PDP.input_coordinates(batch).cuda()  # question: wrong?
+        move_to(PDP.input_coordinates(batch), rank)
         if opts.distributed
         else move_to(PDP.input_coordinates(batch), opts.device)
     )
     batch_size = batch_feature.size(0)
     action = (
-        move_to_cuda(torch.tensor([-1, -1, -1]).repeat(batch_size, 1), rank)
+        move_to(torch.tensor([-1, -1, -1]).repeat(batch_size, 1), rank)
         if opts.distributed
         else move_to(torch.tensor([-1, -1, -1]).repeat(batch_size, 1), opts.device)
     )
 
     action_removal_record = [
         torch.zeros((batch_feature.size(0), problem.size // 2))
-        for _ in range(problem.size)
+        for _ in range(problem.size)  # N2S paper section 4.4 last sentence
     ]
     # print(f"rank {rank}, data from {batch['id'][0]},{batch['id'][1]} , to {batch['id'][-2]},{batch['id'][-1]}")
 
     # initial solution
     solution = (
-        move_to_cuda(problem.get_initial_solutions(batch), rank)
+        move_to(problem.get_initial_solutions(batch), rank)
         if opts.distributed
         else move_to(problem.get_initial_solutions(batch), opts.device)
     )
@@ -656,7 +649,7 @@ def train_batch(
             )
             grad_norms = clip_grad_norms(
                 agent.optimizer.param_groups, opts.max_grad_norm
-            )  # question: no work?
+            )
 
             # perform gradient descent
             agent.optimizer.step()

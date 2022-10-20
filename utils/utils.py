@@ -39,12 +39,6 @@ def move_to(var: Any, device: Union[int, torch.device]) -> Any:
     return var.to(device)
 
 
-def move_to_cuda(var: Any, device: Union[int, torch.device]) -> Any:
-    if isinstance(var, dict):
-        return {k: move_to(v, device) for k, v in var.items()}
-    return var.cuda(device)
-
-
 def clip_grad_norms(
     param_groups: List[dict], max_norm: float = math.inf
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
@@ -56,7 +50,7 @@ def clip_grad_norms(
     :return: grad_norms, clipped_grad_norms: list with (clipped) gradient norms per group
     """
     grad_norms = [
-        torch.nn.utils.clip_grad_norm(
+        torch.nn.utils.clip_grad_norm_(
             group['params'],
             max_norm
             if max_norm > 0

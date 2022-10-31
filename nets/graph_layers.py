@@ -54,8 +54,7 @@ class MultiHeadAttention(nn.Module):
         self.W_key = nn.Parameter(torch.Tensor(n_heads, in_key_dim, hidden_dim))
         if in_val_dim is not None:  # else calculate attention score
             self.W_val = nn.Parameter(torch.Tensor(n_heads, in_val_dim, hidden_dim))
-
-        self.W_out = nn.Parameter(torch.Tensor(n_heads, hidden_dim, out_dim))
+            self.W_out = nn.Parameter(torch.Tensor(n_heads, hidden_dim, out_dim))
 
         self.init_parameters()
 

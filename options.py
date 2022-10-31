@@ -283,11 +283,13 @@ def get_options(args: Optional[List[str]] = None) -> Option:
 
     ### figure out whether to use distributed training
     opts.world_size = torch.cuda.device_count()
-    opts.distributed = (torch.cuda.device_count() > 1) and (not opts.no_DDP)
+    opts.use_cuda = torch.cuda.is_available() and not opts.no_cuda
+    opts.distributed = (
+        opts.use_cuda and (torch.cuda.device_count() > 1) and (not opts.no_DDP)
+    )
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '4869'
     assert opts.val_m <= opts.graph_size // 2
-    opts.use_cuda = torch.cuda.is_available() and not opts.no_cuda
     opts.run_name = (
         "{}_{}".format(opts.run_name, time.strftime("%Y%m%dT%H%M%S"))
         if not opts.resume

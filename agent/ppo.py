@@ -272,19 +272,20 @@ def train(
         torch.cuda.set_device(rank)
         agent.actor.to(device)
         agent.critic.to(device)
+
         for state in agent.optimizer.state.values():
             for k, v in state.items():
                 if torch.is_tensor(v):
                     state[k] = v.to(device)
 
-        if torch.cuda.device_count() > 1:
-            agent.actor = torch.nn.parallel.DistributedDataParallel(
-                agent.actor, device_ids=[rank]
+        agent.actor = torch.nn.parallel.DistributedDataParallel(
+            agent.actor, device_ids=[rank]
+        )  # type: ignore
+        if not opts.eval_only:
+            agent.critic = torch.nn.parallel.DistributedDataParallel(
+                agent.critic, device_ids=[rank]
             )  # type: ignore
-            if not opts.eval_only:
-                agent.critic = torch.nn.parallel.DistributedDataParallel(
-                    agent.critic, device_ids=[rank]
-                )  # type: ignore
+
         if not opts.no_tb and rank == 0:
             tb_logger = TbLogger(
                 os.path.join(

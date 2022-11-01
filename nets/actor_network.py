@@ -111,7 +111,7 @@ class Actor(nn.Module):
         require_entropy: bool = False,
         to_critic: bool = False,
         only_critic: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ):
         # the embedded input x
         # batch_size, graph_size+1, node_dim = x_in.size()
 
@@ -123,9 +123,8 @@ class Actor(nn.Module):
         aux_att = self.pos_emb_encoder(g_pos)
         h_wave = self.encoder(h_fea, aux_att)[0]
 
-        null = torch.tensor([])
         if only_critic:
-            return h_wave, null, null, null
+            return h_wave, None, None, None
 
         # pass through decoder
         action, log_ll, entropy = self.decoder(
@@ -146,6 +145,6 @@ class Actor(nn.Module):
         return (
             action,
             log_ll.squeeze(),
-            h_wave if to_critic else null,
-            entropy if require_entropy else null,
+            h_wave if to_critic else None,
+            entropy if require_entropy else None,
         )

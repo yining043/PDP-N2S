@@ -426,7 +426,7 @@ class N2SDecoder(nn.Module):
         selection_recent: torch.Tensor,
         fixed_action: Optional[torch.Tensor],
         require_entropy: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ):
 
         batch_size, graph_size_plus1, input_dim = h_wave.size()
         half_pos = (graph_size_plus1 - 1) // 2
@@ -439,7 +439,6 @@ class N2SDecoder(nn.Module):
             batch_size, graph_size_plus1, input_dim
         )  # (11)
 
-        null = torch.tensor([])
         ############# action1 removal
         if TYPE_REMOVAL == 'N2S':
             action_removal_table = (
@@ -451,7 +450,7 @@ class N2SDecoder(nn.Module):
             if pre_action is not None and pre_action[0, 0] > 0:
                 action_removal_table[arange, pre_action[:, 0]] = -1e20
             log_ll_removal = (
-                F.log_softmax(action_removal_table, dim=-1) if self.training else null
+                F.log_softmax(action_removal_table, dim=-1) if self.training else None
             )  # log-likelihood
             probs_removal = F.softmax(action_removal_table, dim=-1)
         elif TYPE_REMOVAL == 'random':
@@ -509,7 +508,7 @@ class N2SDecoder(nn.Module):
             else:
                 assert False
         selected_log_ll_action1 = (
-            log_ll_removal.gather(1, action_removal)
+            log_ll_removal.gather(1, action_removal)  # type: ignore
             if self.training and TYPE_REMOVAL == 'N2S'
             else torch.tensor(0).to(h_hat.device)
         )
@@ -601,7 +600,7 @@ class N2SDecoder(nn.Module):
         log_ll_reinsertion = (
             F.log_softmax(action_reinsertion_table, dim=-1)
             if self.training and TYPE_REINSERTION == 'N2S'
-            else null
+            else None
         )
         probs_reinsertion = F.softmax(action_reinsertion_table, dim=-1)
         # fixed action
@@ -633,7 +632,7 @@ class N2SDecoder(nn.Module):
             )  # batch_size, 3
 
         selected_log_ll_action2 = (
-            log_ll_reinsertion.gather(1, pair_index)
+            log_ll_reinsertion.gather(1, pair_index)  # type: ignore
             if self.training and TYPE_REINSERTION == 'N2S'
             else torch.tensor(0).to(h_hat.device)
         )
@@ -644,7 +643,7 @@ class N2SDecoder(nn.Module):
             dist = Categorical(probs_reinsertion, validate_args=False)
             entropy = dist.entropy()
         else:
-            entropy = null
+            entropy = None
 
         return action, log_ll, entropy
 
@@ -915,7 +914,7 @@ class EmbeddingNet(nn.Module):
 
     def _position_embedding(
         self, solution: torch.Tensor, embedding_dim: int, clac_stacks: bool
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         batch_size, seq_length = solution.size()
         half_size = seq_length // 2
 
@@ -968,16 +967,16 @@ class EmbeddingNet(nn.Module):
         return (
             torch.gather(position_emb_new, 1, index),
             (visit_index % seq_length).long(),
-            top2 if clac_stacks else torch.tensor([]),
+            top2 if clac_stacks else None,
         )
 
     __call__: Callable[
-        ..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        ..., Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
     ]
 
     def forward(
         self, x: torch.Tensor, solution: torch.Tensor, clac_stacks: bool
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         pos_emb, visit_index, top2 = self._position_embedding(
             solution, self.embedding_dim, clac_stacks
         )

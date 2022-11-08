@@ -59,8 +59,6 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed = False, 
     best_hist = []
     r = []
     for batch in tqdm(val_dataloader, desc = 'inference', bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
-        torch.manual_seed(opts.seed)
-        np.random.seed(opts.seed)
         bv_, cost_hist_, best_hist_, r_ = agent.rollout(problem,
                                                         opts.val_m,
                                                         batch,
@@ -92,6 +90,9 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed = False, 
         costs_history = cost_hist
         search_history = best_hist
         reward = r
+        
+    if distributed and opts.distributed: dist.barrier()
+        
     # log to screen  
     if rank == 0: log_to_screen(time_used, 
                                   initial_cost, 
@@ -118,4 +119,6 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed = False, 
                       T = opts.T_max,
                       show_figs = opts.show_figs,
                       epoch = _id)
+    
+    if distributed and opts.distributed: dist.barrier()
     

@@ -58,7 +58,7 @@ Note that following the data structure of our [DACT](https://github.com/yining04
 * numpy
 * tensorboard_logger
 * tqdm
-* cv2
+* opencv-python (cv2)
 * matplotlib
 
 ### Note:

@@ -1,14 +1,7 @@
-PDP-improve.ipynb
 .vscode
-log
-.ipynb_checkpoints
-*.zip
-trash
-logs*/
+logs/
 outputs/
-others/
-*.ipynb
-.DS_Store
+local_only
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

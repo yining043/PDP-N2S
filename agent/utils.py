@@ -6,7 +6,6 @@ from tqdm import tqdm
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from tensorboard_logger import Logger as TbLogger
-import numpy as np
 
 from problems.problem_pdp import PDP
 from utils.logger import log_to_screen, log_to_tb_val
@@ -92,8 +91,6 @@ def validate(
     for batch in tqdm(
         val_dataloader, desc='inference', bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'
     ):
-        torch.manual_seed(opts.seed)
-        np.random.seed(opts.seed)
         bv_, cost_hist_, best_hist_, r_ = agent.rollout(
             problem, opts.val_m, batch, show_bar=rank == 0
         )

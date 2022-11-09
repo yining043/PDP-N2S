@@ -7,7 +7,6 @@ from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from tensorboard_logger import Logger as TbLogger
-import numpy as np
 import random
 
 from utils import clip_grad_norms, rotate_tensor
@@ -261,8 +260,6 @@ def train(
     warnings.filterwarnings("ignore")
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.manual_seed(opts.seed)
-    np.random.seed(opts.seed)
 
     if opts.distributed:
         device = torch.device("cuda", rank)

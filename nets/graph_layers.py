@@ -256,7 +256,7 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
     ) -> torch.Tensor:
 
         pre = solution.argsort()  # pre=[1,2,0]
-        post = solution.gather(1, solution)  # post=[1,2,0]
+        post = solution  # post=[2,0,1]
         batch_size, graph_size_plus1, input_dim = h_hat.size()
 
         hflat = h_hat.contiguous().view(-1, input_dim)  #################   reshape

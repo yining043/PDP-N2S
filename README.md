@@ -43,6 +43,8 @@ You may also find our [DACT](https://github.com/yining043/VRP-DACT) useful.
 # Jupyter Notebook
 Note that following the data structure of our [DACT](https://github.com/yining043/VRP-DACT), we use linked list to store solutions. We thus highly recommend you to read our Jupyter notebook for DACT before getting into details of our code for N2S. Please open the [Jupyter notebook](https://github.com/yining043/VRP-DACT/blob/main/Play_with_DACT.ipynb) here :)
 
+Meanwhile, a refactoring of this repo can be found in the branch [refactor](https://github.com/yining043/PDP-N2S/tree/refactor), where the names of the variables are changed to be consistent with the paper, some minor bugs are fixed, and the type hints for python are provided, which is supposed to be more convenient for the first-time user of the project. We thank [@ci-ke](https://github.com/ci-ke) for the nice refactoring.
+
 
 # Dependencies
 * Python>=3.6

@@ -643,7 +643,7 @@ def train_batch(
 
             # Clip gradient norm and get (clipped) gradient norms for logging
             current_step = int(
-                step * T / n_step * K_epochs + t // n_step * K_epochs + k_
+                step * T / n_step * K_epochs + (t - 1) // n_step * K_epochs + k_
             )
             grad_norms = clip_grad_norms(
                 agent.optimizer.param_groups, opts.max_grad_norm
@@ -654,7 +654,7 @@ def train_batch(
 
             # Logging to tensorboard
             if (not opts.no_tb) and rank == 0:
-                if current_step % int(opts.log_step) == 0:
+                if (current_step + 1) % int(opts.log_step) == 0:
                     log_to_tb_train(
                         tb_logger,
                         agent,
@@ -671,7 +671,7 @@ def train_batch(
                         logprobs,
                         initial_cost,
                         opts.show_figs,
-                        current_step,
+                        current_step + 1,
                     )
 
             if rank == 0:

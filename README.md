@@ -58,16 +58,7 @@ Note that following the data structure of our [DACT](https://github.com/yining04
 * numpy
 * tensorboard_logger
 * tqdm
-* opencv-python (cv2)
 * matplotlib
-
-### Note:
-For the exception below from package tensorboard_logger,
-```python
-AttributeError: module 'scipy.misc' has no attribute 'toimage'
-```
-Please refer to [issue #27](https://github.com/TeamHG-Memex/tensorboard_logger/issues/27) to fix it.
-
 
 # Usage
 ## Generating data

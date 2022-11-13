@@ -134,7 +134,7 @@ class MultiHeadSelfAttention(nn.Module):
         return self.MHA(q, q, q)
 
 
-class MultiHeadSelfAttentionScore(nn.Module):
+class MultiHeadSelfAttentionScore(nn.Module): #?
     def __init__(self, n_heads: int, input_dim: int) -> None:
         super().__init__()
         self.MHA = MultiHeadAttention(n_heads, input_dim, input_dim, None, input_dim)

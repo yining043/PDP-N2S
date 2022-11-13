@@ -17,7 +17,6 @@ class PDP(ABC):
         self.size = size  # the number of nodes in PDTSP
         self.check_feasible = check_feasible
         self.init_val_method = init_val_method
-        self.state = 'eval'
 
     @staticmethod
     @abstractmethod

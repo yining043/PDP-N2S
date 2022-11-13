@@ -26,19 +26,15 @@ class PDTSPL(PDP):
     ) -> torch.Tensor:
         visited_order_map = PDP._get_visit_order_map(visit_index)
         batch_size, graph_size_plus1, _ = visited_order_map.size()
-
+        arange = torch.arange(batch_size)
         top = torch.where(top2[:, :, 0] == selected_node, top2[:, :, 1], top2[:, :, 0])
         mask_pd = top.view(-1, graph_size_plus1, 1) != top.view(-1, 1, graph_size_plus1)
 
         mask = visited_order_map.clone()  # true means unavailable
-        mask[torch.arange(batch_size), selected_node.view(-1)] = True
-        mask[
-            torch.arange(batch_size), selected_node.view(-1) + graph_size_plus1 // 2
-        ] = True
-        mask[torch.arange(batch_size), :, selected_node.view(-1)] = True
-        mask[
-            torch.arange(batch_size), :, selected_node.view(-1) + graph_size_plus1 // 2
-        ] = True
+        mask[arange, selected_node.view(-1)] = True
+        mask[arange, selected_node.view(-1) + graph_size_plus1 // 2] = True
+        mask[arange, :, selected_node.view(-1)] = True
+        mask[arange, :, selected_node.view(-1) + graph_size_plus1 // 2] = True
 
         return mask | mask_pd
 
@@ -61,16 +57,13 @@ class PDTSPL(PDP):
                 )  # fix bug: max is not stable sorting
                 stacks[:, 0] = 0  # fix bug: max is not stable sorting
                 for i in range(self.size):
-
                     index1 = (selected_node <= half_size) & (selected_node > 0)
                     if index1.any():
                         stacks[index1.view(-1), selected_node[index1]] = i + 1
                     top = stacks.max(-1)[1]
 
                     dists = torch.ones(batch_size, self.size + 1)
-                    dists.scatter_(1, selected_node, -1e20)
                     dists[~candidates] = -1e20
-                    dists[:, half_size + 1 :] = -1e20  # mask all delivery
                     dists[top > 0, top[top > 0] + half_size] = 1
                     dists = torch.softmax(dists, -1)
                     next_selected_node = dists.multinomial(1).view(-1, 1)
@@ -115,8 +108,6 @@ class PDTSPL(PDP):
                     d2 = batch['coordinates'].cpu()
 
                     dists = (d1 - d2).norm(p=2, dim=2)
-                    # dists = batch['dist'].cpu().gather(1,selected_node.view(batch_size,1,1).expand(batch_size, 1, self.size + 1)).squeeze().clone()
-                    dists.scatter_(1, selected_node, 1e6)
                     dists[~candidates] = 1e6
 
                     dists[:, self.size // 2 + 1 :] += 1e3  # mask all delivery
@@ -177,7 +168,6 @@ class PDTSPL(PDP):
             torch.zeros((batch_size, size_p1 // 2), device=solution.device).long()
             - 0.01
         )
-        stacks[:, 0] = 0  # fix bug: max is not stable sorting
         pre = torch.zeros(batch_size, device=solution.device).long()
         arange = torch.arange(batch_size)
         for i in range(size_p1):
@@ -193,10 +183,11 @@ class PDTSPL(PDP):
             ).all(), 'pdtsp error'
             if (index2).any():
                 stacks[index2, cur[index2] - 1 - size_p1 // 2] = -0.01
-
+        
+        assert ((stacks == -0.01).all())
         assert (
             visited_time[:, 1 : size_p1 // 2 + 1] < visited_time[:, size_p1 // 2 + 1 :]
         ).all(), (
-            visited_time[:, 1 : size_p1 // 2 + 1] < visited_time[:, size_p1 + 1 // 2 :],
+            visited_time[:, 1 : size_p1 // 2 + 1] < visited_time[:, size_p1 // 2 + 1 :],
             "deliverying without pick-up",
         )

@@ -28,14 +28,11 @@ class PDTSP(PDP):
         batch_size, graph_size_plus1, _ = visited_order_map.size()
 
         mask = visited_order_map.clone()  # true means unavailable
-        mask[torch.arange(batch_size), selected_node.view(-1)] = True
-        mask[
-            torch.arange(batch_size), selected_node.view(-1) + graph_size_plus1 // 2
-        ] = True
-        mask[torch.arange(batch_size), :, selected_node.view(-1)] = True
-        mask[
-            torch.arange(batch_size), :, selected_node.view(-1) + graph_size_plus1 // 2
-        ] = True
+        arange = torch.arange(batch_size)
+        mask[arange, selected_node.view(-1)] = True
+        mask[arange, selected_node.view(-1) + graph_size_plus1 // 2] = True
+        mask[arange, :, selected_node.view(-1)] = True
+        mask[arange, :, selected_node.view(-1) + graph_size_plus1 // 2] = True
 
         return mask
 
@@ -56,7 +53,6 @@ class PDTSP(PDP):
 
                 for _ in range(self.size):
                     dists: torch.Tensor = torch.ones(batch_size, self.size + 1)
-                    dists.scatter_(1, selected_node, -1e20)
                     dists[~candidates] = -1e20
                     dists = torch.softmax(dists, -1)
                     next_selected_node: torch.Tensor = dists.multinomial(1).view(-1, 1)
@@ -99,8 +95,6 @@ class PDTSP(PDP):
                     d2 = batch['coordinates'].cpu()  # (batch_size, graph_size+1, 2)
 
                     dists = (d1 - d2).norm(p=2, dim=2)  # (batch_size, graph_size+1)
-                    # dists = batch['dist'].cpu().gather(1,selected_node.view(batch_size,1,1).expand(batch_size, 1, self.size + 1)).squeeze().clone()
-                    dists.scatter_(1, selected_node, 1e6)
                     dists[~candidates] = 1e6
                     next_selected_node = dists.min(-1)[1].view(-1, 1)
 

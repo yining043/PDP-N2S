@@ -123,6 +123,10 @@ def validate(
         costs_history = cost_hist
         search_history = best_hist
         reward = r
+        
+    if distributed and opts.distributed:
+        dist.barrier()
+            
     # log to screen
     if rank == 0:
         log_to_screen(
@@ -151,6 +155,8 @@ def validate(
             val_size=opts.val_size,
             dataset_size=len(val_dataset),
             T=opts.T_max,
-            show_figs=opts.show_figs,
             epoch=id_,
         )
+    
+    if distributed and opts.distributed:
+        dist.barrier()

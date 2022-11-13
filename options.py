@@ -12,7 +12,6 @@ class Option(argparse.Namespace):
     init_val_method: str
     no_cuda: bool
     no_tb: bool
-    show_figs: bool
     no_saving: bool
     use_assert: bool
     no_DDP: bool
@@ -97,9 +96,6 @@ def get_options(args: Optional[List[str]] = None) -> Option:
     parser.add_argument('--no_cuda', action='store_true', help='disable GPUs')
     parser.add_argument(
         '--no_tb', action='store_true', help='disable Tensorboard logging'
-    )
-    parser.add_argument(
-        '--show_figs', action='store_true', help='enable figure logging'
     )
     parser.add_argument(
         '--no_saving', action='store_true', help='disable saving checkpoints'

@@ -670,7 +670,6 @@ def train_batch(
                         baseline_loss,
                         logprobs,
                         initial_cost,
-                        opts.show_figs,
                         current_step + 1,
                     )
 

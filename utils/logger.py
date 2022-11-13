@@ -4,8 +4,6 @@ import math
 from tensorboard_logger import Logger as TbLogger
 from agent.agent import Agent
 
-from utils.plots import plot_grad_flow, plot_improve_pg
-
 
 def log_to_screen(
     time_used: torch.Tensor,
@@ -85,17 +83,9 @@ def log_to_tb_val(
     val_size: int,
     dataset_size: int,
     T: int,
-    show_figs: bool,
     epoch: Optional[int],
 ) -> None:
-    if show_figs:
-        tb_logger.log_images(
-            'validation/improve_pg', [plot_improve_pg(costs_history)], epoch
-        )
-        tb_logger.log_images(
-            'validation/search_pg', [plot_improve_pg(search_history)], epoch
-        )
-
+    
     tb_logger.log_value('validation/avg_time', time_used.mean() / dataset_size, epoch)
     tb_logger.log_value('validation/avg_total_reward', reward.sum(1).mean(), epoch)
     tb_logger.log_value('validation/avg_step_reward', reward.mean(), epoch)
@@ -123,7 +113,6 @@ def log_to_tb_train(
     baseline_loss: torch.Tensor,
     log_likelihood: torch.Tensor,
     initial_cost: torch.Tensor,
-    show_figs: bool,
     mini_step: int,
 ) -> None:
 
@@ -132,7 +121,7 @@ def log_to_tb_train(
     )
     avg_cost = (total_cost).mean().item()
     tb_logger.log_value('train/avg_cost', avg_cost, mini_step)
-    tb_logger.log_value('train/Target_Returen', Reward.mean().item(), mini_step)
+    tb_logger.log_value('train/Target_Return', Reward.mean().item(), mini_step)
     tb_logger.log_value('train/ratios', ratios.mean().item(), mini_step)
     avg_reward = torch.stack(reward, 0).sum(0).mean().item()
     max_reward = torch.stack(reward, 0).max(0)[0].mean().item()
@@ -158,7 +147,3 @@ def log_to_tb_train(
 
     tb_logger.log_value('grad/critic', grad_norms[1], mini_step)
     tb_logger.log_value('grad_clipped/critic', grad_norms_clipped[1], mini_step)
-
-    if show_figs and mini_step % 1000 == 0:
-        tb_logger.log_images('grad/actor', [plot_grad_flow(agent.actor)], mini_step)
-        tb_logger.log_images('grad/critic', [plot_grad_flow(agent.critic)], mini_step)

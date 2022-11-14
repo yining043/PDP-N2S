@@ -58,7 +58,6 @@ Note that following the data structure of our [DACT](https://github.com/yining04
 * numpy
 * tensorboard_logger
 * tqdm
-* matplotlib
 
 # Usage
 ## Generating data

@@ -16,6 +16,7 @@ from utils import torch_load_cpu, get_inner_model, move_to
 from utils.logger import log_to_tb_train
 from problems.problem_pdp import PDP
 from options import Option
+from copy import deepcopy
 
 from .agent import Agent
 from .utils import validate
@@ -426,7 +427,6 @@ def train_batch(
         torch.zeros((batch_feature.size(0), problem.size // 2))
         for _ in range(problem.size)  # N2S paper section 4.4 last sentence
     ]
-    # print(f"rank {rank}, data from {batch['id'][0]},{batch['id'][1]} , to {batch['id'][-2]},{batch['id'][-1]}")
 
     # initial solution
     solution = (
@@ -481,9 +481,8 @@ def train_batch(
 
         while t - t_s < n_step and not (t == T):
 
-            memory.states.append(solution)
-            memory.action_removal_record.append(action_removal_record.copy())
-
+            memory.states.append(solution.clone())
+            memory.action_removal_record.append(deepcopy(action_removal_record))
             # get model output
 
             action, log_lh, to_critic_, entro_p = agent.actor(
@@ -496,9 +495,9 @@ def train_batch(
                 to_critic=True,
             )
 
-            memory.actions.append(action)
-            memory.logprobs.append(log_lh)
-            memory.best_obj.append(obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1))
+            memory.actions.append(action.clone())
+            memory.logprobs.append(log_lh.clone())
+            memory.best_obj.append(obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1).clone())
 
             entropy_list.append(entro_p.detach().cpu())
 
@@ -513,7 +512,7 @@ def train_batch(
             solution, rewards, obj, action_removal_record = problem.step(
                 batch, solution, action, obj, action_removal_record
             )
-            memory.rewards.append(rewards)
+            memory.rewards.append(rewards.clone())
             # memory.mask_true = memory.mask_true + info['swaped']
 
             # store info

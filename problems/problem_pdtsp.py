@@ -55,7 +55,7 @@ class PDTSP(PDP):
                     dists: torch.Tensor = torch.ones(batch_size, self.size + 1)
                     dists[~candidates] = -1e20
                     dists = torch.softmax(dists, -1)
-                    next_selected_node: torch.Tensor = dists.multinomial(1).view(-1, 1)
+                    next_selected_node = dists.multinomial(1).view(-1, 1)
 
                     add_index = (next_selected_node <= half_size).view(-1)
                     pairing = (
@@ -68,9 +68,8 @@ class PDTSP(PDP):
 
                     solution.scatter_(1, selected_node, next_selected_node)
                     candidates.scatter_(1, next_selected_node, 0)
-                    selected_node = (
-                        next_selected_node  # my_fix: all selected_node is no need
-                    )
+                    selected_node = next_selected_node
+                    
 
                 return solution
 

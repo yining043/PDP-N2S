@@ -2,6 +2,7 @@ from typing import Optional
 import time
 import torch
 import os
+import random
 from tqdm import tqdm
 import torch.distributed as dist
 from torch.utils.data import DataLoader
@@ -36,6 +37,9 @@ def validate(
     torch.backends.cudnn.benchmark = False
     opts = agent.opts
     agent.eval()
+    if opts.eval_only:
+        torch.manual_seed(opts.seed)
+        random.seed(opts.seed)
 
     val_dataset = PDP.make_dataset(
         size=opts.graph_size, num_samples=opts.val_size, filename=val_dataset_str

@@ -3,7 +3,6 @@ import torch
 from torch import nn
 import math
 import numpy as np
-from torch.nn import DataParallel
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
@@ -25,12 +24,8 @@ def torch_load_cpu(load_path: str) -> Dict[str, Any]:
     )  # Load on CPU
 
 
-def get_inner_model(model: Union[nn.Module, DataParallel, DDP]) -> nn.Module:
-    return (
-        model.module
-        if isinstance(model, DataParallel) or isinstance(model, DDP)
-        else model
-    )
+def get_inner_model(model: Union[nn.Module, DDP]) -> nn.Module:
+    return model.module if isinstance(model, DDP) else model
 
 
 def move_to(var: Any, device: Union[int, torch.device]) -> Any:

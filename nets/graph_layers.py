@@ -67,7 +67,11 @@ class MultiHeadAttention(nn.Module):
     __call__: Callable[..., torch.Tensor]
 
     def forward(
-        self, q: torch.Tensor, k: torch.Tensor, v: Optional[torch.Tensor] = None
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: Optional[torch.Tensor] = None,
+        with_norm: bool = False,
     ) -> torch.Tensor:
 
         if self.in_val_dim is None:  # calculate attention score
@@ -100,9 +104,14 @@ class MultiHeadAttention(nn.Module):
             V = torch.matmul(vflat, self.W_val).view(shp_kv)
 
         # Calculate compatibility (n_heads, batch_size, n_query, n_key)
-        compatibility = self.norm_factor * torch.matmul(Q, K.transpose(2, 3))
+        compatibility = torch.matmul(Q, K.transpose(2, 3))
 
-        if v is None:
+        if v is None and not with_norm:
+            return compatibility
+
+        compatibility = self.norm_factor * compatibility
+
+        if v is None and with_norm:
             return compatibility
 
         attn = F.softmax(compatibility, dim=-1)
@@ -256,7 +265,9 @@ class NodePairRemovalDecoder(nn.Module):  # (12) (13)
     ) -> torch.Tensor:
 
         pre = solution.argsort()  # pre=[1,2,0]
-        post = solution.gather(1,solution)  # post=[1,2,0] # the second neighbour works better
+        post = solution.gather(
+            1, solution
+        )  # post=[1,2,0] # the second neighbour works better
         batch_size, graph_size_plus1, input_dim = h_hat.size()
 
         hflat = h_hat.contiguous().view(-1, input_dim)  #################   reshape

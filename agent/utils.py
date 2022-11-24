@@ -45,17 +45,16 @@ def validate(
         size=opts.graph_size, num_samples=opts.val_size, filename=val_dataset_str
     )
 
-    if distributed and opts.distributed:
+    if distributed:
         device = torch.device("cuda", rank)
         torch.distributed.init_process_group(
             backend='nccl', world_size=opts.world_size, rank=rank
         )
         torch.cuda.set_device(rank)
         agent.actor.to(device)
-        if torch.cuda.device_count() > 1:
-            agent.actor = torch.nn.parallel.DistributedDataParallel(
-                agent.actor, device_ids=[rank]
-            )  # type: ignore
+        agent.actor = torch.nn.parallel.DistributedDataParallel(
+            agent.actor, device_ids=[rank]
+        )  # type: ignore
         if not opts.no_tb and rank == 0:
             tb_logger = TbLogger(
                 os.path.join(
@@ -65,7 +64,6 @@ def validate(
                 )
             )
 
-    if distributed and opts.distributed:
         assert opts.val_batch_size % opts.world_size == 0
         train_sampler = torch.utils.data.distributed.DistributedSampler(
             val_dataset, shuffle=False
@@ -107,10 +105,9 @@ def validate(
     best_hist = torch.cat(best_hist_list, 0)
     r = torch.cat(r_list, 0)
 
-    if distributed and opts.distributed:
+    if distributed:
         dist.barrier()
 
-    if distributed and opts.distributed:
         initial_cost = gather_tensor_and_concat(cost_hist[:, 0].contiguous())
         time_used = gather_tensor_and_concat(
             torch.tensor([time.time() - s_time]).cuda()
@@ -120,6 +117,8 @@ def validate(
         search_history = gather_tensor_and_concat(best_hist.contiguous())
         reward = gather_tensor_and_concat(r.contiguous())
 
+        dist.barrier()
+
     else:
         initial_cost = cost_hist[:, 0]  # bs
         time_used = torch.tensor([time.time() - s_time])  # bs
@@ -127,10 +126,7 @@ def validate(
         costs_history = cost_hist
         search_history = best_hist
         reward = r
-        
-    if distributed and opts.distributed:
-        dist.barrier()
-            
+
     # log to screen
     if rank == 0:
         log_to_screen(
@@ -161,6 +157,6 @@ def validate(
             T=opts.T_max,
             epoch=id_,
         )
-    
-    if distributed and opts.distributed:
+
+    if distributed:
         dist.barrier()

@@ -88,11 +88,6 @@ class PPO(Agent):
             if not opts.eval_only:
                 self.critic.to(opts.device)
 
-            if torch.cuda.device_count() > 1:
-                self.actor = torch.nn.DataParallel(self.actor)  # type: ignore
-                if not opts.eval_only:
-                    self.critic = torch.nn.DataParallel(self.critic)  # type: ignore
-
     def load(self, load_path: str) -> None:
 
         assert load_path is not None
@@ -500,7 +495,9 @@ def train_batch(
 
             memory.actions.append(action.clone())
             memory.logprobs.append(log_lh.clone())
-            memory.best_obj.append(obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1).clone())
+            memory.best_obj.append(
+                obj.view(obj.size(0), -1)[:, -1].unsqueeze(-1).clone()
+            )
 
             entropy_list.append(entro_p.detach().cpu())
 

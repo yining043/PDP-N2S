@@ -53,8 +53,8 @@ Note that following the data structure of our [DACT](https://github.com/yining04
 
 
 # Dependencies
-* Python>=3.6
-* PyTorch>=1.1
+* Python>=3.8
+* PyTorch>=1.7
 * numpy
 * tensorboard_logger
 * tqdm
@@ -77,7 +77,7 @@ CUDA_VISIBLE_DEVICES=0,1 python run.py --problem pdtsp --graph_size 50 --warm_up
 
 100 nodes:
 ```python
-CUDA_VISIBLE_DEVICES=0,1,2,3 python run.py --problem pdtsp --graph_size 100 --warm_up 1 --max_grad_norm 0.35 --val_m 1 --val_dataset './datasets/pdp_100.pkl' --run_name 'example_training_PDTSP100'
+CUDA_VISIBLE_DEVICES=0,1,2,3 python run.py --problem pdtsp --graph_size 100 --warm_up 1 --max_grad_norm 0.3 --val_m 1 --val_dataset './datasets/pdp_100.pkl' --run_name 'example_training_PDTSP100'
 ```
 ### PDTSP-LIFO examples
 20 nodes:
@@ -92,7 +92,7 @@ CUDA_VISIBLE_DEVICES=0,1 python run.py --problem pdtspl --graph_size 50 --warm_u
 
 100 nodes:
 ```python
-CUDA_VISIBLE_DEVICES=0,1,2,3 python run.py --problem pdtspl --graph_size 100 --warm_up 1 --max_grad_norm 0.35 --val_m 1 --val_dataset './datasets/pdp_100.pkl' --run_name 'example_training_PDTSPL100'
+CUDA_VISIBLE_DEVICES=0,1,2,3 python run.py --problem pdtspl --graph_size 100 --warm_up 1 --max_grad_norm 0.3 --val_m 1 --val_dataset './datasets/pdp_100.pkl' --run_name 'example_training_PDTSPL100'
 ```
 
 ### Warm start

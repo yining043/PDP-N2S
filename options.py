@@ -13,7 +13,6 @@ def get_options(args=None):
     parser.add_argument('--init_val_met', choices = ['greedy', 'random'], default = 'random', help='method to generate initial solutions for inference')
     parser.add_argument('--no_cuda', action='store_true', help='disable GPUs')
     parser.add_argument('--no_tb', action='store_true', help='disable Tensorboard logging')
-    parser.add_argument('--show_figs', action='store_true', help='enable figure logging')
     parser.add_argument('--no_saving', action='store_true', help='disable saving checkpoints')
     parser.add_argument('--use_assert', action='store_true', help='enable assertion')
     parser.add_argument('--no_DDP', action='store_true', help='disable distributed parallel')
@@ -72,7 +71,7 @@ def get_options(args=None):
     
     ### figure out whether to use distributed training
     opts.world_size = torch.cuda.device_count()
-    opts.distributed = (torch.cuda.device_count() > 1) and (not opts.no_DDP)
+    opts.distributed = (opts.world_size > 1) and (not opts.no_DDP)
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '4869'
     assert opts.val_m <= opts.graph_size // 2

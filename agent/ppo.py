@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from tensorboard_logger import Logger as TbLogger
-import numpy as np
 import random
 
 from utils import clip_grad_norms, rotate_tensor
@@ -76,10 +75,6 @@ class PPO:
             
             self.actor.to(opts.device)
             if not opts.eval_only: self.critic.to(opts.device)
-            
-            if torch.cuda.device_count() > 1:
-                self.actor = torch.nn.DataParallel(self.actor)
-                if not opts.eval_only: self.critic = torch.nn.DataParallel(self.critic)
                 
     
     def load(self, load_path):
@@ -211,8 +206,9 @@ def train(rank, problem, agent, val_dataset, tb_logger):
     warnings.filterwarnings("ignore")
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.manual_seed(opts.seed)
-    np.random.seed(opts.seed)
+    if opts.resume is None:
+        torch.manual_seed(opts.seed)
+        random.seed(opts.seed)
         
     if opts.distributed:
         device = torch.device("cuda", rank)
@@ -225,11 +221,11 @@ def train(rank, problem, agent, val_dataset, tb_logger):
                     if torch.is_tensor(v):
                         state[k] = v.to(device)
         
-        if torch.cuda.device_count() > 1:
-            agent.actor = torch.nn.parallel.DistributedDataParallel(agent.actor,
-                                                                   device_ids=[rank])
-            if not opts.eval_only: agent.critic = torch.nn.parallel.DistributedDataParallel(agent.critic,
-                                                                   device_ids=[rank])
+
+        agent.actor = torch.nn.parallel.DistributedDataParallel(agent.actor,
+                                                               device_ids=[rank])
+        if not opts.eval_only: agent.critic = torch.nn.parallel.DistributedDataParallel(agent.critic,
+                                                               device_ids=[rank])
         if not opts.no_tb and rank == 0:
             tb_logger = TbLogger(os.path.join(opts.log_dir, "{}_{}".format(opts.problem, 
                                                           opts.graph_size), opts.run_name))
@@ -530,7 +526,7 @@ def train_batch(
             if(not opts.no_tb) and rank == 0:
                 if (current_step + 1) % int(opts.log_step) == 0:
                     log_to_tb_train(tb_logger, agent, Reward, ratios, bl_val_detached, total_cost, grad_norms, memory.rewards, entropy, approx_kl_divergence,
-                       reinforce_loss, baseline_loss, logprobs, initial_cost, opts.show_figs, current_step + 1)
+                       reinforce_loss, baseline_loss, logprobs, initial_cost, current_step + 1)
                     
             if rank == 0: pbar.update(1)     
         

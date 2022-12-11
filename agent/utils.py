@@ -8,7 +8,7 @@ from utils.logger import log_to_screen, log_to_tb_val
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from tensorboard_logger import Logger as TbLogger
-import numpy as np
+import random
 
 def gather_tensor_and_concat(tensor):
     gather_t = [torch.ones_like(tensor) for _ in range(dist.get_world_size())]
@@ -22,6 +22,9 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed = False, 
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     opts = agent.opts
+    if opts.eval_only:
+        torch.manual_seed(opts.seed)
+        random.seed(opts.seed)
     agent.eval()
     
     val_dataset = problem.make_dataset(size=opts.graph_size,
@@ -117,7 +120,6 @@ def validate(rank, problem, agent, val_dataset, tb_logger, distributed = False, 
                       val_size =  opts.val_size,
                       dataset_size = len(val_dataset), 
                       T = opts.T_max,
-                      show_figs = opts.show_figs,
                       epoch = _id)
     
     if distributed and opts.distributed: dist.barrier()

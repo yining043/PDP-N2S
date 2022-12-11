@@ -1,8 +1,8 @@
 import os
 import json
 import torch
+import random
 import pprint
-import numpy as np
 from tensorboard_logger import Logger as TbLogger
 import warnings
 from options import get_options
@@ -34,7 +34,7 @@ def run(opts):
 
     # Set the random seed
     torch.manual_seed(opts.seed)
-    np.random.seed(opts.seed)
+    random.seed(opts.seed)
 
     # Optionally configure tensorboard
     tb_logger = None
